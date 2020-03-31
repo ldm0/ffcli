@@ -1,0 +1,11 @@
+[package]
+name = "ffcli"
+version = "0.1.0"
+authors = ["Donough Liu <ldm2993593805@163.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bitflags = "1.2.1"
+libc = "0.2.68"
