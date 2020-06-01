@@ -49,38 +49,37 @@ impl default::Default for OptionOperation {
 }
 
 #[derive(Debug, Default)]
-pub struct OptionDef {
-    pub name: &'static str,
-    pub help: &'static str,
-    pub argname: Option<&'static str>,
+pub struct OptionDef<'a> {
+    pub name: &'a str,
+    pub help: &'a str,
+    pub argname: Option<&'a str>,
     pub flags: OptionFlag,
     pub u: OptionOperation,
 }
 
 /// Currently move the flags out of the struct.
 #[derive(Debug, Default)]
-pub struct OptionGroupDef {
-    pub name: &'static str,
-    pub sep: Option<&'static str>,
+pub struct OptionGroupDef<'global> {
+    pub name: &'global str,
+    pub sep: Option<&'global str>,
     pub flags: OptionFlag,
 }
 
 /// Original name is `Option` in FFmpeg, but it's a wide-use type in Rust.
 /// So I rename it to `OptionKV`.
 #[derive(Debug, Clone)]
-pub struct OptionKV {
-    pub opt: &'static OptionDef,
+pub struct OptionKV<'global> {
+    pub opt: &'global OptionDef<'global>,
     pub key: String,
-    // Val can be empty
-    pub val: Option<String>,
+    pub val: String,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct OptionGroup {
-    // TODO: is the Option really needed?
-    pub group_def: Option<&'static OptionGroupDef>,
+// TODO maybe split the lifetime here
+#[derive(Debug, Clone)]
+pub struct OptionGroup<'global> {
+    pub group_def: &'global OptionGroupDef<'global>,
     pub arg: String,
-    pub opts: Vec<OptionKV>,
+    pub opts: Vec<OptionKV<'global>>,
     /* Ignore them currently
     AVDictionary *codec_opts;
     AVDictionary *format_opts;
@@ -90,20 +89,42 @@ pub struct OptionGroup {
     */
 }
 
-/// A list of option groups that all have the same group type
-/// (e.g. input files or output files)
-#[derive(Debug, Default)]
-pub struct OptionGroupList {
-    pub group_def: Option<&'static OptionGroupDef>,
-    pub groups: Vec<OptionGroup>,
+/// This default implementation is specially used for cur_group before it's
+/// refactored into tuple.
+impl<'global> default::Default for OptionGroup<'global> {
+    fn default() -> Self {
+        static NEVER_USE_GROUP: OptionGroupDef = OptionGroupDef {
+            name: "never_used",
+            sep: None,
+            flags: OptionFlag::NONE,
+        };
+        OptionGroup {
+            group_def: &NEVER_USE_GROUP,
+            arg: String::new(),
+            opts: vec![],
+        }
+    }
 }
 
-#[derive(Debug, Default)]
-pub struct OptionParseContext {
-    pub global_opts: OptionGroup,
-    pub groups: Vec<OptionGroupList>,
-    /// parsing state
-    pub cur_group: OptionGroup,
+/// A list of option groups that all have the same group type
+/// (e.g. input files or output files)
+#[derive(Debug)]
+pub struct OptionGroupList<'global> {
+    pub group_def: &'global OptionGroupDef<'global>,
+    pub groups: Vec<OptionGroup<'global>>,
+}
+
+#[derive(Debug)]
+pub struct OptionParseContext<'ctxt> {
+    /// Global options
+    pub global_opts: OptionGroup<'ctxt>,
+    /// Options that can find a OptionGroupDef
+    pub groups: Vec<OptionGroupList<'ctxt>>,
+    /// Parsing state
+    /// Attention: The group_def in the cur_group has never been used, so we just
+    /// use create a placeholder. More attractive option is change the cur_group
+    /// from OptionGroup to tuple (arg: String, opts: Vec<OptionKV>).
+    pub cur_group: OptionGroup<'ctxt>,
 }
 
 #[cfg(test)]

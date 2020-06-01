@@ -1,4 +1,6 @@
 use libc::c_void;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
 
 use crate::types::{
     OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV, OptionOperation,
@@ -64,50 +66,52 @@ macro_rules! option_group_def {
 
 macro_rules! c_void {
     ($x: expr) => {
-        $x as *mut _ as *mut c_void
+        unsafe { &mut $x as *mut _ as *mut c_void }
     };
 }
 
-pub const GROUPS: [OptionGroupDef; 2] = [
-    option_group_def!("output url", OptionFlag::OPT_OUTPUT),
-    option_group_def!("input url", "i", OptionFlag::OPT_INPUT),
-];
+pub static GROUPS: Lazy<[OptionGroupDef; 2]> = Lazy::new(|| {
+    [
+        option_group_def!("output url", OptionFlag::OPT_OUTPUT),
+        option_group_def!("input url", "i", OptionFlag::OPT_INPUT),
+    ]
+});
 
-pub const OPTIONS: [OptionDef; 25] = [
-    option_def!("L",            OptionFlag::OPT_EXIT,               func_arg => show_license,     "show license"),
-    option_def!("h",            OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
-    option_def!("?",            OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
-    option_def!("help",         OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
-    option_def!("-help",        OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
-    option_def!("version",      OptionFlag::OPT_EXIT,               func_arg => show_version,     "show version"),
-    option_def!("buildconf",    OptionFlag::OPT_EXIT,               func_arg => show_buildconf,   "show build configuration"),
-    option_def!("formats",      OptionFlag::OPT_EXIT,               func_arg => show_formats,     "show available formats"),
-    option_def!("muxers",       OptionFlag::OPT_EXIT,               func_arg => show_muxers,      "show available muxers"),
-    option_def!("demuxers",     OptionFlag::OPT_EXIT,               func_arg => show_demuxers,    "show available demuxers"),
-    option_def!("devices",      OptionFlag::OPT_EXIT,               func_arg => show_devices,     "show available devices"),
-    option_def!("codecs",       OptionFlag::OPT_EXIT,               func_arg => show_codecs,      "show available codecs"),
-    option_def!("decoders",     OptionFlag::OPT_EXIT,               func_arg => show_decoders,    "show available decoders"),
-    option_def!("encoders",     OptionFlag::OPT_EXIT,               func_arg => show_encoders,    "show available encoders"),
-    option_def!("bsfs",         OptionFlag::OPT_EXIT,               func_arg => show_bsfs,        "show available bit stream filters"),
-    option_def!("protocols",    OptionFlag::OPT_EXIT,               func_arg => show_protocols,   "show available protocols"),
-    option_def!("filters",      OptionFlag::OPT_EXIT,               func_arg => show_filters,     "show available filters"),
-    option_def!("pix_fmts",     OptionFlag::OPT_EXIT,               func_arg => show_pix_fmts,    "show available pixel formats"),
-    option_def!("layouts",      OptionFlag::OPT_EXIT,               func_arg => show_layouts,     "show standard channel layouts"),
-    option_def!("sample_fmts",  OptionFlag::OPT_EXIT,               func_arg => show_sample_fmts, "show available audio sample formats"),
-    option_def!("colors",       OptionFlag::OPT_EXIT,               func_arg => show_colors,      "show available color names"),
-    option_def!("loglevel",     OptionFlag::HAS_ARG,                func_arg => opt_loglevel,     "set logging level", "loglevel"),
-    option_def!("v",            OptionFlag::HAS_ARG,                func_arg => opt_loglevel,     "set logging level", "loglevel"),
-    option_def!("report",       OptionFlag::NONE,                   func_arg => opt_report,       "generate a report"),
-    option_def!("max_alloc",    OptionFlag::HAS_ARG,                func_arg => opt_max_alloc,    "set maximum size of a single allocated block", "bytes"),
-    /*
-    option_def!("cpuflags",     OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT,   func_arg => opt_cpuflags,       "force specific cpu flags", "flags"),
-    option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => c_void!(&mut hide_banner),        "do not show program banner", "hide_banner"),
-    option_def!("sources",      OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sources,       "list sources of the input device", "device"),
-    option_def!("sinks",        OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sinks,         "list sinks of the output device", "device"),
-    */
-];
+pub static OPTIONS: Lazy<[OptionDef; 29]> = Lazy::new(|| {
+    [
+        option_def!("L",            OptionFlag::OPT_EXIT,               func_arg => show_license,     "show license"),
+        option_def!("h",            OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
+        option_def!("?",            OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
+        option_def!("help",         OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
+        option_def!("-help",        OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
+        option_def!("version",      OptionFlag::OPT_EXIT,               func_arg => show_version,     "show version"),
+        option_def!("buildconf",    OptionFlag::OPT_EXIT,               func_arg => show_buildconf,   "show build configuration"),
+        option_def!("formats",      OptionFlag::OPT_EXIT,               func_arg => show_formats,     "show available formats"),
+        option_def!("muxers",       OptionFlag::OPT_EXIT,               func_arg => show_muxers,      "show available muxers"),
+        option_def!("demuxers",     OptionFlag::OPT_EXIT,               func_arg => show_demuxers,    "show available demuxers"),
+        option_def!("devices",      OptionFlag::OPT_EXIT,               func_arg => show_devices,     "show available devices"),
+        option_def!("codecs",       OptionFlag::OPT_EXIT,               func_arg => show_codecs,      "show available codecs"),
+        option_def!("decoders",     OptionFlag::OPT_EXIT,               func_arg => show_decoders,    "show available decoders"),
+        option_def!("encoders",     OptionFlag::OPT_EXIT,               func_arg => show_encoders,    "show available encoders"),
+        option_def!("bsfs",         OptionFlag::OPT_EXIT,               func_arg => show_bsfs,        "show available bit stream filters"),
+        option_def!("protocols",    OptionFlag::OPT_EXIT,               func_arg => show_protocols,   "show available protocols"),
+        option_def!("filters",      OptionFlag::OPT_EXIT,               func_arg => show_filters,     "show available filters"),
+        option_def!("pix_fmts",     OptionFlag::OPT_EXIT,               func_arg => show_pix_fmts,    "show available pixel formats"),
+        option_def!("layouts",      OptionFlag::OPT_EXIT,               func_arg => show_layouts,     "show standard channel layouts"),
+        option_def!("sample_fmts",  OptionFlag::OPT_EXIT,               func_arg => show_sample_fmts, "show available audio sample formats"),
+        option_def!("colors",       OptionFlag::OPT_EXIT,               func_arg => show_colors,      "show available color names"),
+        option_def!("loglevel",     OptionFlag::HAS_ARG,                func_arg => opt_loglevel,     "set logging level", "loglevel"),
+        option_def!("v",            OptionFlag::HAS_ARG,                func_arg => opt_loglevel,     "set logging level", "loglevel"),
+        option_def!("report",       OptionFlag::NONE,                   func_arg => opt_report,       "generate a report"),
+        option_def!("max_alloc",    OptionFlag::HAS_ARG,                func_arg => opt_max_alloc,    "set maximum size of a single allocated block", "bytes"),
+        option_def!("cpuflags",     OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT,   func_arg => opt_cpuflags,       "force specific cpu flags", "flags"),
+        option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => c_void!(hide_banner),        "do not show program banner", "hide_banner"),
+        option_def!("sources",      OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sources,       "list sources of the input device", "device"),
+        option_def!("sinks",        OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sinks,         "list sinks of the output device", "device"),
+    ]
+});
 
-// static mut hide_banner: bool = false;
+static mut hide_banner: bool = false;
 
 fn show_license(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
     print!(
