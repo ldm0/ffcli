@@ -203,8 +203,7 @@ pub fn parse_opt_group<'ctxt>(
                     "Applying option {} ({}) with argument {}.",
                     o.key, o.opt.help, o.val
                 );
-                write_option(&mut optctx, o.opt, &o.key, &o.val);
-                Ok(())
+                write_option(&mut optctx, o.opt, &o.key, &o.val)
             }
         })
         .collect::<Result<Vec<_>, ()>>()?;
@@ -212,9 +211,53 @@ pub fn parse_opt_group<'ctxt>(
     Ok(())
 }
 
+/// `context` is the `opt`, `num_str` is usually the `arg`
+pub fn parse_number(
+    context: &str,
+    numstr: &str,
+    num_type: OptionFlag,
+    min: f64,
+    max: f64,
+) -> Result<f64, String> {
+    // TODO after creating binding to libavutil, use av_strtod()
+    let d = numstr.parse::<f64>();
+    let error = match d {
+        Err(_) => format!("Expected number for {} but found: {}", context, numstr),
+        Ok(d) => {
+            if d < min || d > max {
+                format!(
+                    "The value for {} was {} which is not within {} - {}",
+                    context, numstr, min, max
+                )
+            } else if num_type == OptionFlag::OPT_INT64 && d as i64 as f64 != d {
+                format!("Expected int64 for {} but found {}", context, numstr)
+            } else if num_type == OptionFlag::OPT_INT && d as isize as f64 != d {
+                format!("Expected int for {} but found {}", context, numstr)
+            } else {
+                return Ok(d);
+            }
+        }
+    };
+    Err(error)
+}
+
+fn parse_time(_context: &str, _timestr: &str, _is_duration: bool) -> Result<i64, String> {
+    // TODO after inner library binding, use the av_parse_time()
+    error!("av_parse_time() currently haven't been binded! Return placeholder currently");
+    /*
+    int64_t us;
+    if (av_parse_time(&us, timestr, is_duration) < 0) {
+        av_log(NULL, AV_LOG_FATAL, "Invalid %s specification for %s: %s\n",
+               is_duration ? "duration" : "date", context, timestr);
+        exit_program(1);
+    }
+    */
+    return Ok(42);
+}
+
 /// If failed, panic with some description.
 /// TODO: change this function to return  Result later
-fn write_option(optctx: &mut Option<&mut OptionsContext>, po: &OptionDef, opt: &str, arg: &str) {
+fn write_option(optctx: &mut Option<&mut OptionsContext>, po: &OptionDef, opt: &str, arg: &str) -> Result<(), ()> {
     let dst: *mut c_void = if po
         .flags
         .intersects(OptionFlag::OPT_OFFSET | OptionFlag::OPT_SPEC)
@@ -248,17 +291,72 @@ fn write_option(optctx: &mut Option<&mut OptionsContext>, po: &OptionDef, opt: &
     {
         let dst = dst as *mut isize;
         let dst = unsafe { dst.as_mut() }.unwrap();
-    // *dst = parse_number().expect("expect a number");
+        // IMPROVEMENT FFmpeg uses i32::{MIN, MAX} here but it's int though many
+        // c compiler still treat int as 32bit, but I think for Rust age, we
+        // need to change it.
+        *dst = parse_number(
+            opt,
+            arg,
+            OptionFlag::OPT_INT64,
+            isize::MIN as f64,
+            isize::MAX as f64,
+        )
+        .unwrap() as isize;
     } else if po.flags.contains(OptionFlag::OPT_INT64) {
+        let dst = dst as *mut i64;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+        *dst = parse_number(
+            opt,
+            arg,
+            OptionFlag::OPT_INT64,
+            i64::MIN as f64,
+            i64::MAX as f64,
+        )
+        .unwrap() as i64;
     } else if po.flags.contains(OptionFlag::OPT_TIME) {
+        let dst = dst as *mut i64;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+        *dst = parse_time(opt, arg, true).unwrap();
     } else if po.flags.contains(OptionFlag::OPT_FLOAT) {
+        let dst = dst as *mut f32;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+        *dst = parse_number(
+            opt,
+            arg,
+            OptionFlag::OPT_INT64,
+            i64::MIN as f64,
+            i64::MAX as f64,
+        )
+        .unwrap() as f32;
     } else if po.flags.contains(OptionFlag::OPT_DOUBLE) {
+        let dst = dst as *mut f64;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+        *dst = parse_number(
+            opt,
+            arg,
+            OptionFlag::OPT_INT64,
+            i64::MIN as f64,
+            i64::MAX as f64,
+        )
+        .unwrap();
     } else if unsafe { po.u.off } != 0 {
-        //po.u.func_arg()
+        let optctx = if let &mut Some(ref mut optctx) = optctx {
+            *optctx as *mut _ as *mut c_void
+        } else {
+            panic!("Option contains function pointer but in global_opts");
+        };
+        let func = unsafe { po.u.func_arg };
+        let ret = func(optctx, opt, arg);
+        // TODO av_err2str() still haven't been implemented
+        if ret < 0 {
+            error!("Failed to set value '{}' for option '{}': {}", arg, opt, "av_err2str()");
+            return Err(())
+        }
     }
     if po.flags.contains(OptionFlag::OPT_EXIT) {
         panic!("exit as required");
     }
+    Ok(())
 }
 
 // TODO the Err in returned Result need to be a ERROR enum
