@@ -3,7 +3,7 @@ use libc::c_void;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
-use crate::types::{
+use crate::cmdutils::{
     OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV, OptionOperation,
     OptionParseContext,
 };

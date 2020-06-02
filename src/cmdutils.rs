@@ -1,0 +1,457 @@
+use libc::c_void;
+use log::{debug, error};
+
+use crate::ffmpeg::OptionsContext;
+
+enum OptGroup {
+    GroupOutfile = 0,
+    GroupInfile = 1,
+}
+
+use bitflags::bitflags;
+use std::{default, fmt, marker};
+
+bitflags! {
+    #[derive(Default)]
+    pub struct OptionFlag: u64 {
+        const NONE          = 0x0000;
+        const HAS_ARG       = 0x0001;
+        const OPT_BOOL      = 0x0002;
+        const OPT_EXPERT    = 0x0004;
+        const OPT_STRING    = 0x0008;
+        const OPT_VIDEO     = 0x0010;
+        const OPT_AUDIO     = 0x0020;
+        const OPT_INT       = 0x0080;
+        const OPT_FLOAT     = 0x0100;
+        const OPT_SUBTITLE  = 0x0200;
+        const OPT_INT64     = 0x0400;
+        const OPT_EXIT      = 0x0800;
+        const OPT_DATA      = 0x1000;
+        const OPT_PERFILE   = 0x2000;
+        const OPT_OFFSET    = 0x4000;
+        const OPT_SPEC      = 0x8000;
+        const OPT_TIME      = 0x10000;
+        const OPT_DOUBLE    = 0x20000;
+        const OPT_INPUT     = 0x40000;
+        const OPT_OUTPUT    = 0x80000;
+    }
+}
+
+pub union OptionOperation {
+    pub dst_ptr: *mut c_void,
+    pub func_arg: fn(*mut c_void, &str, &str) -> i64,
+    pub off: usize,
+}
+
+impl fmt::Debug for OptionOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("(Union)OptionOperation")
+            .field("val", unsafe { &self.off })
+            .finish()
+    }
+}
+
+impl default::Default for OptionOperation {
+    fn default() -> Self {
+        OptionOperation { off: 0 }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct OptionDef<'a> {
+    pub name: &'a str,
+    pub help: &'a str,
+    pub argname: Option<&'a str>,
+    pub flags: OptionFlag,
+    pub u: OptionOperation,
+}
+
+/// Though OptionOperation contains pointer, we still need it to impl Send and
+/// Sync, we can ensure its safety.
+unsafe impl<'a> marker::Send for OptionDef<'a> {}
+
+/// Though OptionOperation contains pointer, we still need it to impl Send and
+/// Sync, we can ensure its safety.
+unsafe impl<'a> marker::Sync for OptionDef<'a> {}
+
+/// Currently move the flags out of the struct.
+#[derive(Debug, Default)]
+pub struct OptionGroupDef<'global> {
+    pub name: &'global str,
+    pub sep: Option<&'global str>,
+    pub flags: OptionFlag,
+}
+
+/// Original name is `Option` in FFmpeg, but it's a wide-use type in Rust.
+/// So I rename it to `OptionKV`.
+#[derive(Debug, Clone)]
+pub struct OptionKV<'global> {
+    pub opt: &'global OptionDef<'global>,
+    pub key: String,
+    pub val: String,
+}
+
+// TODO maybe split the lifetime here
+#[derive(Debug, Clone)]
+pub struct OptionGroup<'global> {
+    pub group_def: &'global OptionGroupDef<'global>,
+    pub arg: String,
+    pub opts: Vec<OptionKV<'global>>,
+    /* Ignore them currently
+    AVDictionary *codec_opts;
+    AVDictionary *format_opts;
+    AVDictionary *resample_opts;
+    AVDictionary *sws_dict;
+    AVDictionary *swr_opts;
+    */
+}
+
+impl<'global> OptionGroup<'global> {
+    pub fn new_global() -> Self {
+        static GLOBAL_GROUP: OptionGroupDef = OptionGroupDef {
+            name: "global",
+            sep: None,
+            flags: OptionFlag::NONE,
+        };
+        OptionGroup {
+            group_def: &GLOBAL_GROUP,
+            arg: String::new(),
+            opts: vec![],
+        }
+    }
+
+    /// This function is specially used for cur_group before it's
+    /// refactored into tuple.
+    pub fn new_anonymous() -> Self {
+        static NEVER_USE_GROUP: OptionGroupDef = OptionGroupDef {
+            name: "never_used",
+            sep: None,
+            flags: OptionFlag::NONE,
+        };
+        OptionGroup {
+            group_def: &NEVER_USE_GROUP,
+            arg: String::new(),
+            opts: vec![],
+        }
+    }
+}
+
+/// A list of option groups that all have the same group type
+/// (e.g. input files or output files)
+#[derive(Debug)]
+pub struct OptionGroupList<'global> {
+    pub group_def: &'global OptionGroupDef<'global>,
+    pub groups: Vec<OptionGroup<'global>>,
+}
+
+#[derive(Debug)]
+pub struct OptionParseContext<'global> {
+    /// Global options
+    pub global_opts: OptionGroup<'global>,
+    /// Options that can find a OptionGroupDef
+    pub groups: Vec<OptionGroupList<'global>>,
+    /// Parsing state
+    /// Attention: The group_def in the cur_group has never been used, so we just
+    /// use create a placeholder. More attractive option is change the cur_group
+    /// from OptionGroup to tuple (arg: String, opts: Vec<OptionKV>).
+    pub cur_group: OptionGroup<'global>,
+}
+
+pub union SpecifierOptValue {
+    pub str: *mut u8,
+    pub i: isize,
+    pub i64: i64,
+    pub ui64: u64,
+    pub f: f32,
+    pub dbl: f64,
+}
+
+impl default::Default for SpecifierOptValue {
+    fn default() -> Self {
+        SpecifierOptValue { i: 0 }
+    }
+}
+
+pub struct SpecifierOpt {
+    pub specifier: String,
+    pub u: SpecifierOptValue,
+}
+
+/// This function accepts moved Option value with the OptionsContext it references to unchanged.
+pub fn parse_opt_group<'ctxt>(
+    mut optctx: Option<&mut OptionsContext>,
+    g: &OptionGroup,
+) -> Result<(), ()> {
+    debug!(
+        "Parsing a group of options: {} {}.",
+        g.group_def.name, g.arg
+    );
+    g.opts
+        .iter()
+        .map(|o| {
+            if !g.group_def.flags.is_empty() && !g.group_def.flags.intersects(o.opt.flags) {
+                error!(
+                    "Option {} ({}) cannot be applied to \
+                   {} {} -- you are trying to apply an input option to an \
+                   output file or vice versa. Move this option before the \
+                   file it belongs to.",
+                    o.key, o.opt.help, g.group_def.name, g.arg
+                );
+                Err(())
+            } else {
+                debug!(
+                    "Applying option {} ({}) with argument {}.",
+                    o.key, o.opt.help, o.val
+                );
+                write_option(&mut optctx, o.opt, &o.key, &o.val);
+                Ok(())
+            }
+        })
+        .collect::<Result<Vec<_>, ()>>()?;
+    debug!("Successfully parsed a group of options.");
+    Ok(())
+}
+
+/// If failed, panic with some description.
+/// TODO: change this function to return  Result later
+fn write_option(optctx: &mut Option<&mut OptionsContext>, po: &OptionDef, opt: &str, arg: &str) {
+    let dst: *mut c_void = if po
+        .flags
+        .intersects(OptionFlag::OPT_OFFSET | OptionFlag::OPT_SPEC)
+    {
+        if let &mut Some(ref mut optctx) = optctx {
+            *optctx as *mut _ as *mut c_void
+        } else {
+            panic!("some option contains OPT_OFFSET or OPT_SPEC but in global_opts")
+        }
+    } else {
+        unsafe { po.u.dst_ptr }
+    };
+
+    if po.flags.contains(OptionFlag::OPT_SPEC) {
+        let so = dst as *mut Vec<SpecifierOpt>;
+        let so = unsafe { so.as_mut() }.unwrap();
+        let s = opt.find(':').map_or("", |i| &opt[i + 1..]);
+        so.push(SpecifierOpt {
+            specifier: s.to_owned(),
+            u: Default::default(),
+        });
+    }
+
+    if po.flags.contains(OptionFlag::OPT_STRING) {
+        let dst = dst as *mut String;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+        *dst = arg.to_owned();
+    } else if po
+        .flags
+        .intersects(OptionFlag::OPT_STRING | OptionFlag::OPT_INT)
+    {
+        let dst = dst as *mut isize;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+    // *dst = parse_number().expect("expect a number");
+    } else if po.flags.contains(OptionFlag::OPT_INT64) {
+    } else if po.flags.contains(OptionFlag::OPT_TIME) {
+    } else if po.flags.contains(OptionFlag::OPT_FLOAT) {
+    } else if po.flags.contains(OptionFlag::OPT_DOUBLE) {
+    } else if unsafe { po.u.off } != 0 {
+        //po.u.func_arg()
+    }
+    if po.flags.contains(OptionFlag::OPT_EXIT) {
+        panic!("exit as required");
+    }
+}
+
+// TODO the Err in returned Result need to be a ERROR enum
+pub fn split_commandline<'ctxt, 'global>(
+    octx: &'ctxt mut OptionParseContext<'global>,
+    args: &[String],
+    options: &'global [OptionDef],
+    groups: &'global [OptionGroupDef],
+) -> Result<(), ()> {
+    let argv = args;
+    let argc = argv.len();
+
+    // No app arguments preparation, and the init_parse_context is moved outside.
+
+    debug!("Splitting the commandline.");
+
+    let mut optindex = 1;
+    let mut dashdash = None;
+
+    // consider using `Iterator::nth()` to replace the `while` with `for`
+    while optindex < argc {
+        let opt = &argv[optindex];
+        optindex += 1;
+
+        print!("Reading option '{}' ...", opt);
+
+        if opt == "--" {
+            dashdash = Some(optindex);
+            continue;
+        }
+
+        // unnamed group separators, e.g. output filename
+        if !opt.starts_with('-') || opt.len() <= 1 || dashdash == Some(optindex - 1) {
+            // IMPROVEMENT original FFmpeg use 0 rather than enum value here.
+            finish_group(octx, OptGroup::GroupOutfile as usize, opt);
+            debug!(
+                " matched as {}.",
+                groups[OptGroup::GroupOutfile as usize].name
+            );
+            continue;
+        }
+
+        // Jump over prefix `-`
+        let opt = &opt[1..];
+
+        // Named group separators, e.g. -i
+        if let Some(group_idx) = match_group_separator(groups, opt) {
+            let arg = match argv.get(optindex) {
+                Some(arg) => arg,
+                None => return Err(()),
+            };
+            optindex += 1;
+
+            finish_group(octx, group_idx, arg);
+            debug!(
+                " matched as {} with argument '{}'.",
+                groups[group_idx].name, arg
+            );
+            continue;
+        }
+
+        // Normal options
+        if let Some(po) = find_option(options, opt) {
+            // IMPROVEMENT original FFmpeg uses GET_ARG here, but it
+            // actually will never throws error
+            let arg = if po
+                .flags
+                .intersects(OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG)
+            {
+                // Optional argument, e.g. -h
+                let arg = &argv[optindex];
+                optindex += 1;
+                arg
+            } else {
+                "1"
+            };
+            add_opt(octx, po, opt, arg);
+            debug!(
+                " matched as option '{}' ({}) with argument '{:?}'.",
+                po.name, po.help, arg
+            );
+            continue;
+        }
+
+        // AVOptions
+        /*
+        if let Some(opt) = argv.get(optindex) {
+            unimplemented!();
+        }
+        */
+
+        // boolean -nofoo options
+        if opt.starts_with("no") {
+            if let Some(po) = find_option(options, &opt[2..]) {
+                if po.flags.contains(OptionFlag::OPT_BOOL) {
+                    debug!(
+                        " matched as option '{}' ({}) with argument 0.",
+                        po.name, po.help
+                    );
+                    continue;
+                }
+            }
+        }
+
+        error!("Unrecognized option '{}'.", opt);
+        return Err(());
+    }
+
+    if !octx.cur_group.opts.is_empty() {
+        // actually or (codec_opts || format_opts || resample_opts) but currently haven't implement this.
+        debug!("Trailing option(s) found in the command: may be ignored.");
+    }
+
+    debug!("Finished splitting the commandline.");
+    Ok(())
+}
+
+fn match_group_separator(groups: &[OptionGroupDef], opt: &str) -> Option<usize> {
+    groups
+        .iter()
+        .enumerate()
+        .find_map(|(i, optdef)| Some(i).filter(|_| optdef.sep == Some(opt)))
+}
+
+/// Finish parsing an option group. Move current parsing group into specific group list
+/// # Parameters
+/// `group_idx`     which group definition should this group belong to
+/// `arg`           argument of the group delimiting option
+fn finish_group(octx: &mut OptionParseContext, group_idx: usize, arg: &str) {
+    let mut new_group = octx.cur_group.clone();
+    new_group.arg = arg.to_owned();
+    new_group.group_def = octx.groups[group_idx].group_def;
+
+    // FUTURE FEATURE: initialization for codec_opts
+
+    octx.groups[group_idx].groups.push(new_group);
+
+    // FUTURE FEATURE: call init_opts()
+
+    octx.cur_group = OptionGroup::new_anonymous();
+}
+
+fn find_option<'global>(
+    options: &'global [OptionDef<'global>],
+    name: &str,
+) -> Option<&'global OptionDef<'global>> {
+    let mut splits = name.split(':');
+    let name = match splits.next() {
+        Some(x) => x,
+        None => return None,
+    };
+    options.iter().find(|&option_def| option_def.name == name)
+}
+
+/// Add an option instance to currently parsed group.
+fn add_opt<'ctxt, 'global>(
+    octx: &'ctxt mut OptionParseContext<'global>,
+    opt: &'global OptionDef<'global>,
+    key: &str,
+    val: &str,
+) {
+    let global = !opt
+        .flags
+        .intersects(OptionFlag::OPT_PERFILE | OptionFlag::OPT_SPEC | OptionFlag::OPT_OFFSET);
+    let g = if global {
+        // Here we can ensure that global_opts's flags doesn't contains either OPT_SPEC or OPT_OFFSET
+        &mut octx.global_opts
+    } else {
+        &mut octx.cur_group
+    };
+    g.opts.push(OptionKV {
+        opt: opt,
+        key: key.to_owned(),
+        val: val.to_owned(),
+    })
+}
+
+#[cfg(test)]
+mod types_tests {
+    use super::*;
+
+    #[test]
+    fn fmt_debug_option_operation_default() {
+        let optop: OptionOperation = Default::default();
+        assert_eq!(format!("{:?}", optop), "(Union)OptionOperation { val: 0 }");
+    }
+
+    #[test]
+    fn fmt_debug_option_operation() {
+        let optop: OptionOperation = OptionOperation { off: 123_456 };
+        assert_eq!(
+            format!("{:?}", optop),
+            "(Union)OptionOperation { val: 123456 }"
+        );
+    }
+}
