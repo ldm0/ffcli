@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 use libc::c_void;
-use std::{default, fmt};
+use std::{default, fmt, marker};
 
 bitflags! {
     #[derive(Default)]
@@ -56,6 +56,14 @@ pub struct OptionDef<'a> {
     pub flags: OptionFlag,
     pub u: OptionOperation,
 }
+
+/// Though OptionOperation contains pointer, we still need it to impl Send and
+/// Sync, we can ensure its safety.
+unsafe impl<'a> marker::Send for OptionDef<'a> {}
+
+/// Though OptionOperation contains pointer, we still need it to impl Send and
+/// Sync, we can ensure its safety.
+unsafe impl<'a> marker::Sync for OptionDef<'a> {}
 
 /// Currently move the flags out of the struct.
 #[derive(Debug, Default)]
@@ -115,16 +123,16 @@ pub struct OptionGroupList<'global> {
 }
 
 #[derive(Debug)]
-pub struct OptionParseContext<'ctxt> {
+pub struct OptionParseContext<'global> {
     /// Global options
-    pub global_opts: OptionGroup<'ctxt>,
+    pub global_opts: OptionGroup<'global>,
     /// Options that can find a OptionGroupDef
-    pub groups: Vec<OptionGroupList<'ctxt>>,
+    pub groups: Vec<OptionGroupList<'global>>,
     /// Parsing state
     /// Attention: The group_def in the cur_group has never been used, so we just
     /// use create a placeholder. More attractive option is change the cur_group
     /// from OptionGroup to tuple (arg: String, opts: Vec<OptionKV>).
-    pub cur_group: OptionGroup<'ctxt>,
+    pub cur_group: OptionGroup<'global>,
 }
 
 #[cfg(test)]

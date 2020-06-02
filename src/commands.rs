@@ -64,7 +64,7 @@ macro_rules! option_group_def {
     };
 }
 
-macro_rules! c_void {
+macro_rules! void {
     ($x: expr) => {
         unsafe { &mut $x as *mut _ as *mut c_void }
     };
@@ -105,7 +105,7 @@ pub static OPTIONS: Lazy<[OptionDef; 29]> = Lazy::new(|| {
         option_def!("report",       OptionFlag::NONE,                   func_arg => opt_report,       "generate a report"),
         option_def!("max_alloc",    OptionFlag::HAS_ARG,                func_arg => opt_max_alloc,    "set maximum size of a single allocated block", "bytes"),
         option_def!("cpuflags",     OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT,   func_arg => opt_cpuflags,       "force specific cpu flags", "flags"),
-        option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => c_void!(hide_banner),        "do not show program banner", "hide_banner"),
+        option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => void!(hide_banner),  "do not show program banner", "hide_banner"),
         option_def!("sources",      OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sources,       "list sources of the input device", "device"),
         option_def!("sinks",        OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sinks,         "list sinks of the output device", "device"),
     ]

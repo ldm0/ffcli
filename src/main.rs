@@ -82,13 +82,16 @@ fn write_option_global(po: &OptionDef, opt: &str, arg: &str) {
 
     if po.flags.contains(OptionFlag::OPT_STRING) {
         unimplemented!()
-    } else if po.flags.contains(OptionFlag::OPT_STRING | OptionFlag::OPT_INT) {
+    } else if po
+        .flags
+        .contains(OptionFlag::OPT_STRING | OptionFlag::OPT_INT)
+    {
     } else if po.flags.contains(OptionFlag::OPT_INT64) {
     } else if po.flags.contains(OptionFlag::OPT_TIME) {
     } else if po.flags.contains(OptionFlag::OPT_FLOAT) {
     } else if po.flags.contains(OptionFlag::OPT_DOUBLE) {
     } else if unsafe { po.u.off } != 0 {
-        po.u.func_arg()
+        //po.u.func_arg()
     }
     if po.flags.contains(OptionFlag::OPT_EXIT) {
         panic!("exit as required");
@@ -96,11 +99,11 @@ fn write_option_global(po: &OptionDef, opt: &str, arg: &str) {
 }
 
 // TODO the Err in returned Result need to be a ERROR enum
-fn split_commandline<'ctxt>(
-    octx: &'ctxt mut OptionParseContext<'ctxt>,
+fn split_commandline<'ctxt, 'global>(
+    octx: &'ctxt mut OptionParseContext<'global>,
     args: &[String],
-    options: &'ctxt [OptionDef],
-    groups: &'ctxt [OptionGroupDef],
+    options: &'global [OptionDef],
+    groups: &'global [OptionGroupDef],
 ) -> Result<(), ()> {
     let argv = args;
     let argc = argv.len();
@@ -235,7 +238,10 @@ fn finish_group(octx: &mut OptionParseContext, group_idx: usize, arg: &str) {
     octx.cur_group = Default::default();
 }
 
-fn find_option<'a>(options: &'a [OptionDef<'a>], name: &str) -> Option<&'a OptionDef<'a>> {
+fn find_option<'global>(
+    options: &'global [OptionDef<'global>],
+    name: &str,
+) -> Option<&'global OptionDef<'global>> {
     let mut splits = name.split(':');
     let name = match splits.next() {
         Some(x) => x,
@@ -245,9 +251,9 @@ fn find_option<'a>(options: &'a [OptionDef<'a>], name: &str) -> Option<&'a Optio
 }
 
 /// Add an option instance to currently parsed group.
-fn add_opt<'ctxt>(
-    octx: &'ctxt mut OptionParseContext<'ctxt>,
-    opt: &'ctxt OptionDef<'ctxt>,
+fn add_opt<'ctxt, 'global>(
+    octx: &'ctxt mut OptionParseContext<'global>,
+    opt: &'global OptionDef<'global>,
     key: &str,
     val: &str,
 ) {
