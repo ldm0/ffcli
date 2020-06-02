@@ -6,9 +6,10 @@ use log::{debug, error};
 use std::env;
 
 use commands::{GROUPS, OPTIONS};
+use libc::c_void;
 use types::{
     OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV, OptionOperation,
-    OptionParseContext,
+    OptionParseContext, OptionsContext, SpecifierOpt, SpecifierOptValue,
 };
 
 enum OptGroup {
@@ -35,14 +36,17 @@ fn main() {
     };
 
     split_commandline(&mut octx, &args, &*OPTIONS, &*GROUPS).unwrap();
-    parse_opt_group_global(&octx.global_opts);
+    parse_opt_group(None, &octx.global_opts).unwrap();
 }
 
-/// Treat original FFmpeg's `parse_opt_group(NULL, _)` as `parse_opt_group_global(_)`
-fn parse_opt_group_global<'ctxt>(g: &OptionGroup) -> Result<(), ()> {
+/// This function accepts moved Option value with the OptionsContext it references to unchanged.
+fn parse_opt_group<'ctxt>(
+    mut optctx: Option<&mut OptionsContext>,
+    g: &OptionGroup,
+) -> Result<(), ()> {
     debug!(
         "Parsing a group of options: {} {}.",
-        g.group_def.name, g.arg,
+        g.group_def.name, g.arg
     );
     for o in g.opts.iter() {
         if !g.group_def.flags.is_empty() && !g.group_def.flags.intersects(o.opt.flags) {
@@ -59,7 +63,7 @@ fn parse_opt_group_global<'ctxt>(g: &OptionGroup) -> Result<(), ()> {
             "Applying option {} ({}) with argument {}.",
             o.key, o.opt.help, o.val
         );
-        write_option_global(o.opt, &o.key, &o.val);
+        write_option(&mut optctx, o.opt, &o.key, &o.val);
     }
 
     debug!("Successfully parsed a group of options.");
@@ -67,18 +71,42 @@ fn parse_opt_group_global<'ctxt>(g: &OptionGroup) -> Result<(), ()> {
 }
 
 /// If failed, panic with some description.
-/// TODO: change this to Result later
-fn write_option_global(po: &OptionDef, opt: &str, arg: &str) {
+/// TODO: change this function to return  Result later
+fn write_option(optctx: &mut Option<&mut OptionsContext>, po: &OptionDef, opt: &str, arg: &str) {
+    let dst: *mut c_void = if po
+        .flags
+        .intersects(OptionFlag::OPT_OFFSET | OptionFlag::OPT_SPEC)
+    {
+        if let &mut Some(ref mut optctx) = optctx {
+            *optctx as *mut _ as *mut c_void
+        } else {
+            panic!("some option contains OPT_OFFSET or OPT_SPEC but in global_opts")
+        }
+    } else {
+        unsafe { po.u.dst_ptr }
+    };
+
     if po.flags.contains(OptionFlag::OPT_SPEC) {
-        unimplemented!();
+        let so = dst as *mut Vec<SpecifierOpt>;
+        let so = unsafe { so.as_mut() }.unwrap();
+        let s = opt.find(':').map_or("", |i| &opt[i + 1..]);
+        so.push(SpecifierOpt {
+            specifier: s.to_owned(),
+            u: Default::default(),
+        });
     }
 
     if po.flags.contains(OptionFlag::OPT_STRING) {
-        unimplemented!()
+        let dst = dst as *mut String;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+        *dst = arg.to_owned();
     } else if po
         .flags
-        .contains(OptionFlag::OPT_STRING | OptionFlag::OPT_INT)
+        .intersects(OptionFlag::OPT_STRING | OptionFlag::OPT_INT)
     {
+        let dst = dst as *mut isize;
+        let dst = unsafe { dst.as_mut() }.unwrap();
+        // *dst = parse_number().expect("expect a number");
     } else if po.flags.contains(OptionFlag::OPT_INT64) {
     } else if po.flags.contains(OptionFlag::OPT_TIME) {
     } else if po.flags.contains(OptionFlag::OPT_FLOAT) {
@@ -156,7 +184,7 @@ fn split_commandline<'ctxt, 'global>(
             // actually will never throws error
             let arg = if po
                 .flags
-                .contains(OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG)
+                .intersects(OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG)
             {
                 // Optional argument, e.g. -h
                 let arg = &argv[optindex];
@@ -252,7 +280,7 @@ fn add_opt<'ctxt, 'global>(
 ) {
     let global = !opt
         .flags
-        .contains(OptionFlag::OPT_PERFILE | OptionFlag::OPT_SPEC | OptionFlag::OPT_OFFSET);
+        .intersects(OptionFlag::OPT_PERFILE | OptionFlag::OPT_SPEC | OptionFlag::OPT_OFFSET);
     let g = if global {
         // Here we can ensure that global_opts's flags doesn't contains either OPT_SPEC or OPT_OFFSET
         &mut octx.global_opts
