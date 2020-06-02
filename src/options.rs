@@ -1,7 +1,9 @@
+// This is need for those global values in FFmpeg
+#![allow(non_upper_case_globals)]
+// This will be finally removed, but in development stage it's useful
 #![allow(unused_variables)]
 use libc::c_void;
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
 
 use crate::cmdutils::{
     OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV, OptionOperation,

@@ -1,5 +1,5 @@
 mod cmdutils;
-mod commands;
+mod options;
 mod ffmpeg;
 mod ffmpeg_opt;
 

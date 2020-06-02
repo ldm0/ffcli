@@ -7,7 +7,7 @@ use crate::{
         OptionGroupList, OptionKV, OptionOperation, OptionParseContext, SpecifierOpt,
         SpecifierOptValue,
     },
-    commands::{GROUPS, OPTIONS},
+    options::{GROUPS, OPTIONS},
 };
 
 enum OptGroup {
