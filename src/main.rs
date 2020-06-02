@@ -1,6 +1,8 @@
 mod commands;
 mod types;
 
+use env_logger;
+use log::{debug, error};
 use std::env;
 
 use commands::{GROUPS, OPTIONS};
@@ -15,6 +17,7 @@ enum OptGroup {
 }
 
 fn main() {
+    env_logger::init();
     // Think: May change to use &str later what about none-UTF8 args?
     let args: Vec<String> = env::args().collect();
     // IMPROVEMENT move `init_parse_context(octx, groups)` out of split_commandline() and inline it.
@@ -47,13 +50,13 @@ fn main() {
 
 /// Treat original FFmpeg's `parse_opt_group(NULL, _)` as `parse_opt_group_global(_)`
 fn parse_opt_group_global<'ctxt>(g: &OptionGroup) -> Result<(), ()> {
-    println!(
+    debug!(
         "Parsing a group of options: {} {}.",
         g.group_def.name, g.arg,
     );
     for o in g.opts.iter() {
         if !g.group_def.flags.is_empty() && !g.group_def.flags.intersects(o.opt.flags) {
-            println!(
+            error!(
                 "Option {} ({}) cannot be applied to \
                    {} {} -- you are trying to apply an input option to an \
                    output file or vice versa. Move this option before the \
@@ -62,14 +65,14 @@ fn parse_opt_group_global<'ctxt>(g: &OptionGroup) -> Result<(), ()> {
             );
             return Err(());
         }
-        println!(
+        debug!(
             "Applying option {} ({}) with argument {}.",
             o.key, o.opt.help, o.val
         );
         write_option_global(o.opt, &o.key, &o.val);
     }
 
-    println!("Successfully parsed a group of options.");
+    debug!("Successfully parsed a group of options.");
     Ok(())
 }
 
@@ -110,7 +113,7 @@ fn split_commandline<'ctxt, 'global>(
 
     // No app arguments preparation, and the init_parse_context is moved outside.
 
-    println!("Splitting the commandline.");
+    debug!("Splitting the commandline.");
 
     let mut optindex = 1;
     let mut dashdash = None;
@@ -131,7 +134,7 @@ fn split_commandline<'ctxt, 'global>(
         if !opt.starts_with('-') || opt.len() <= 1 || dashdash == Some(optindex - 1) {
             // IMPROVEMENT original FFmpeg use 0 rather than enum value here.
             finish_group(octx, OptGroup::GroupOutfile as usize, opt);
-            println!(
+            debug!(
                 " matched as {}.",
                 groups[OptGroup::GroupOutfile as usize].name
             );
@@ -150,7 +153,7 @@ fn split_commandline<'ctxt, 'global>(
             optindex += 1;
 
             finish_group(octx, group_idx, arg);
-            println!(
+            debug!(
                 " matched as {} with argument '{}'.",
                 groups[group_idx].name, arg
             );
@@ -173,7 +176,7 @@ fn split_commandline<'ctxt, 'global>(
                 "1"
             };
             add_opt(octx, po, opt, arg);
-            println!(
+            debug!(
                 " matched as option '{}' ({}) with argument '{:?}'.",
                 po.name, po.help, arg
             );
@@ -191,7 +194,7 @@ fn split_commandline<'ctxt, 'global>(
         if opt.starts_with("no") {
             if let Some(po) = find_option(options, &opt[2..]) {
                 if po.flags.contains(OptionFlag::OPT_BOOL) {
-                    println!(
+                    debug!(
                         " matched as option '{}' ({}) with argument 0.",
                         po.name, po.help
                     );
@@ -200,16 +203,16 @@ fn split_commandline<'ctxt, 'global>(
             }
         }
 
-        println!("Unrecognized option '{}'.", opt);
+        error!("Unrecognized option '{}'.", opt);
         return Err(());
     }
 
     if !octx.cur_group.opts.is_empty() {
         // actually or (codec_opts || format_opts || resample_opts) but currently haven't implement this.
-        println!("Trailing option(s) found in the command: may be ignored.");
+        debug!("Trailing option(s) found in the command: may be ignored.");
     }
 
-    println!("Finished splitting the commandline.");
+    debug!("Finished splitting the commandline.");
     Ok(())
 }
 

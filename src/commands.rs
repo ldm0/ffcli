@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use libc::c_void;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
