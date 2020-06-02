@@ -48,24 +48,28 @@ fn parse_opt_group<'ctxt>(
         "Parsing a group of options: {} {}.",
         g.group_def.name, g.arg
     );
-    for o in g.opts.iter() {
-        if !g.group_def.flags.is_empty() && !g.group_def.flags.intersects(o.opt.flags) {
-            error!(
-                "Option {} ({}) cannot be applied to \
+    g.opts
+        .iter()
+        .map(|o| {
+            if !g.group_def.flags.is_empty() && !g.group_def.flags.intersects(o.opt.flags) {
+                error!(
+                    "Option {} ({}) cannot be applied to \
                    {} {} -- you are trying to apply an input option to an \
                    output file or vice versa. Move this option before the \
                    file it belongs to.",
-                o.key, o.opt.help, g.group_def.name, g.arg
-            );
-            return Err(());
-        }
-        debug!(
-            "Applying option {} ({}) with argument {}.",
-            o.key, o.opt.help, o.val
-        );
-        write_option(&mut optctx, o.opt, &o.key, &o.val);
-    }
-
+                    o.key, o.opt.help, g.group_def.name, g.arg
+                );
+                Err(())
+            } else {
+                debug!(
+                    "Applying option {} ({}) with argument {}.",
+                    o.key, o.opt.help, o.val
+                );
+                write_option(&mut optctx, o.opt, &o.key, &o.val);
+                Ok(())
+            }
+        })
+        .collect::<Result<Vec<_>, ()>>()?;
     debug!("Successfully parsed a group of options.");
     Ok(())
 }
