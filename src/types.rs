@@ -97,10 +97,23 @@ pub struct OptionGroup<'global> {
     */
 }
 
-/// This default implementation is specially used for cur_group before it's
-/// refactored into tuple.
-impl<'global> default::Default for OptionGroup<'global> {
-    fn default() -> Self {
+impl<'global> OptionGroup<'global> {
+    pub fn new_global() -> Self {
+        static GLOBAL_GROUP: OptionGroupDef = OptionGroupDef {
+            name: "global",
+            sep: None,
+            flags: OptionFlag::NONE,
+        };
+        OptionGroup {
+            group_def: &GLOBAL_GROUP,
+            arg: String::new(),
+            opts: vec![],
+        }
+    }
+
+    /// This function is specially used for cur_group before it's
+    /// refactored into tuple.
+    pub fn new_anonymous() -> Self {
         static NEVER_USE_GROUP: OptionGroupDef = OptionGroupDef {
             name: "never_used",
             sep: None,

@@ -22,12 +22,6 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     // IMPROVEMENT move `init_parse_context(octx, groups)` out of split_commandline() and inline it.
 
-    static GLOBAL_GROUP: OptionGroupDef = OptionGroupDef {
-        name: "global",
-        sep: None,
-        flags: OptionFlag::NONE,
-    };
-
     let mut octx = OptionParseContext {
         groups: (&*GROUPS)
             .iter()
@@ -36,12 +30,8 @@ fn main() {
                 groups: vec![],
             })
             .collect(),
-        global_opts: OptionGroup {
-            group_def: &GLOBAL_GROUP,
-            arg: String::new(),
-            opts: vec![],
-        },
-        cur_group: Default::default(),
+        global_opts: OptionGroup::new_global(),
+        cur_group: OptionGroup::new_anonymous(),
     };
 
     split_commandline(&mut octx, &args, &*OPTIONS, &*GROUPS).unwrap();
@@ -238,7 +228,7 @@ fn finish_group(octx: &mut OptionParseContext, group_idx: usize, arg: &str) {
 
     // FUTURE FEATURE: call init_opts()
 
-    octx.cur_group = Default::default();
+    octx.cur_group = OptionGroup::new_anonymous();
 }
 
 fn find_option<'global>(
