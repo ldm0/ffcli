@@ -1,4 +1,4 @@
-//! This file corresponds to ffmpeg.[ch]
+//! This file corresponds to ffmpeg.\[ch\]
 use std::env;
 
 use crate::{

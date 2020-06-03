@@ -257,7 +257,12 @@ fn parse_time(_context: &str, _timestr: &str, _is_duration: bool) -> Result<i64,
 
 /// If failed, panic with some description.
 /// TODO: change this function to return  Result later
-fn write_option(optctx: &mut Option<&mut OptionsContext>, po: &OptionDef, opt: &str, arg: &str) -> Result<(), ()> {
+fn write_option(
+    optctx: &mut Option<&mut OptionsContext>,
+    po: &OptionDef,
+    opt: &str,
+    arg: &str,
+) -> Result<(), ()> {
     let dst: *mut c_void = if po
         .flags
         .intersects(OptionFlag::OPT_OFFSET | OptionFlag::OPT_SPEC)
@@ -349,8 +354,11 @@ fn write_option(optctx: &mut Option<&mut OptionsContext>, po: &OptionDef, opt: &
         let ret = func(optctx, opt, arg);
         // TODO av_err2str() still haven't been implemented
         if ret < 0 {
-            error!("Failed to set value '{}' for option '{}': {}", arg, opt, "av_err2str()");
-            return Err(())
+            error!(
+                "Failed to set value '{}' for option '{}': {}",
+                arg, opt, "av_err2str()"
+            );
+            return Err(());
         }
     }
     if po.flags.contains(OptionFlag::OPT_EXIT) {

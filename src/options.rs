@@ -2,15 +2,13 @@
 #![allow(non_upper_case_globals)]
 // This will be finally removed, but in development stage it's useful
 #![allow(unused_variables)]
-use libc::{
-    c_void, c_char,
-};
+use libc::{c_char, c_void};
 use once_cell::sync::Lazy;
 
 use crate::{
     cmdutils::{
-        OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV, OptionOperation,
-        OptionParseContext,
+        OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV,
+        OptionOperation, OptionParseContext,
     },
     ffmpeg::OptionsContext,
 };
@@ -26,7 +24,6 @@ macro_rules! void {
         unsafe { &raw mut $x as *mut c_void }
     };
 }
-
 
 macro_rules! option_operation {
     (dst_ptr => $operation: expr) => {
@@ -127,6 +124,25 @@ pub static GROUPS: Lazy<[OptionGroupDef; 2]> = Lazy::new(|| {
 });
 
 /// The options list is in ffmpeg_opt.c originally, but we move it here for cleanness.
+///
+/// Steps to create the list from ffmpeg's code:
+/// 1. remove all other codes except the `options`
+/// 2. remove unnecessary lines like comments and empty line and `#ifdef #ifndef #endif` things
+/// 3. `\option_def!("` => `option_def!("`
+/// 4. `, *\{ *&` => `, dst_ptr => `
+/// 5. `, *\{ .off *= OFFSET\(` => `, off => `
+/// 6. `, *\{ .func_arg = ` => `, func_arg => `
+/// 7. `\},\n*    option_def!\(` => `),\n    option_def!(`
+/// 8. `\) *\},` => ` },`
+/// 9. ` *\},\n *` => `, `
+/// 10. `\|\n *` => `| `
+/// 11. `"\n *"` => `| `
+/// 12. then hand tweak inharmonious codes
+/// 13. `,? \),` => `),`
+/// 14. `, *O` => `, OptionFlag::O`
+/// 15. `, *H` => `, OptionFlag::H`
+/// 16. `\| O` => `| OptionFlag::O`
+/// 17. `\| OptionFlag::H` => `| OptionFlag::H`
 pub static OPTIONS: Lazy<[OptionDef; 179]> = Lazy::new(|| {
     [
         // Common options
@@ -337,33 +353,32 @@ static mut copy_unknown_streams: isize = 0;
 static mut find_stream_info: isize = 1;
 
 static mut audio_drift_threshold: f32 = 0.1;
-static mut dts_delta_threshold: f32   = 10.;
-static mut dts_error_threshold: f32   = 3600.*30.;
+static mut dts_delta_threshold: f32 = 10.;
+static mut dts_error_threshold: f32 = 3600. * 30.;
 
-static mut audio_volume: isize      = 256;
+static mut audio_volume: isize = 256;
 static mut audio_sync_method: isize = 0;
 static mut video_sync_method: isize = VSYNC_AUTO;
 static mut frame_drop_threshold: f32 = 0.;
-static mut do_deinterlace: isize    = 0;
-static mut do_benchmark: isize      = 0;
-static mut do_benchmark_all: isize  = 0;
-static mut do_hex_dump: isize       = 0;
-static mut do_pkt_dump: isize       = 0;
-static mut copy_ts: isize           = 0;
-static mut start_at_zero: isize     = 0;
-static mut copy_tb: isize           = -1;
-static mut debug_ts: isize          = 0;
-static mut exit_on_error: isize     = 0;
-static mut abort_on_flags: isize    = 0;
-static mut print_stats: isize       = -1;
-static mut qp_hist: isize           = 0;
+static mut do_deinterlace: isize = 0;
+static mut do_benchmark: isize = 0;
+static mut do_benchmark_all: isize = 0;
+static mut do_hex_dump: isize = 0;
+static mut do_pkt_dump: isize = 0;
+static mut copy_ts: isize = 0;
+static mut start_at_zero: isize = 0;
+static mut copy_tb: isize = -1;
+static mut debug_ts: isize = 0;
+static mut exit_on_error: isize = 0;
+static mut abort_on_flags: isize = 0;
+static mut print_stats: isize = -1;
+static mut qp_hist: isize = 0;
 static mut stdin_interaction: isize = 1;
 static mut frame_bits_per_raw_sample: isize = 0;
-static mut max_error_rate: f32 = 2./3.;
+static mut max_error_rate: f32 = 2. / 3.;
 static mut filter_nbthreads: isize = 0;
 static mut filter_complex_nbthreads: isize = 0;
 static mut vstats_version: isize = 2;
-
 
 // In cmdutils.c in random order
 fn show_license(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
@@ -500,53 +515,133 @@ fn show_sinks(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
     0
 }
 
-fn opt_timelimit(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
+fn opt_timelimit(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
 
 // In ffmpeg_opt.c, in corresponding order
-fn show_hwaccels(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
+fn show_hwaccels(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
 
-fn opt_abort_on(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_sameq(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_video_channel(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_video_standard(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_audio_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_video_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_subtitle_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_data_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_map(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_attach(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_map_channel(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_sdp_file(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_vaapi_device(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_init_hw_device(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_filter_hw_device(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
+fn opt_abort_on(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_sameq(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_video_channel(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_video_standard(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_audio_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_video_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_subtitle_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_data_codec(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_map(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_attach(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_map_channel(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_sdp_file(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_vaapi_device(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_init_hw_device(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_filter_hw_device(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
 
-fn opt_recording_timestamp(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
+fn opt_recording_timestamp(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
 
-fn opt_streamid(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
+fn opt_streamid(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
 
-fn opt_target(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_vstats_file(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_vstats(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_video_frames(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_audio_frames(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_data_frames(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_default_new(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_preset(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_old2new(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_bitrate(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_qscale(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_profile(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_video_filters(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_audio_filters(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_vsync(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_timecode(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_channel_layout(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_audio_qscale(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_filter_complex(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
-fn opt_filter_complex_script(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
+fn opt_target(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_vstats_file(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_vstats(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_video_frames(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_audio_frames(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_data_frames(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_default_new(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_preset(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_old2new(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_bitrate(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_qscale(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_profile(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_video_filters(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_audio_filters(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_vsync(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_timecode(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_channel_layout(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_audio_qscale(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_filter_complex(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
+fn opt_filter_complex_script(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
 
-fn opt_progress(optctx: *mut c_void, opt: &str, arg: &str) -> i64 { unimplemented!() }
+fn opt_progress(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    unimplemented!()
+}
 
 #[cfg(test)]
 mod command_tests {
