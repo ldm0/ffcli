@@ -125,7 +125,7 @@ pub static GROUPS: Lazy<[OptionGroupDef; 2]> = Lazy::new(|| {
 });
 
 /// The options list is in ffmpeg_opt.c originally, but we move it here for cleanness.
-pub static OPTIONS: Lazy<[OptionDef; 30]> = Lazy::new(|| {
+pub static OPTIONS: Lazy<[OptionDef; 44]> = Lazy::new(|| {
     [
         // Common options
         option_def!("L",            OptionFlag::OPT_EXIT,               func_arg => show_license,     "show license"),
@@ -158,11 +158,43 @@ pub static OPTIONS: Lazy<[OptionDef; 30]> = Lazy::new(|| {
         option_def!("sources",      OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sources,       "list sources of the input device", "device"),
         option_def!("sinks",        OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sinks,         "list sinks of the output device",  "device"),
         // FFmpeg main options
-        option_def!("f",            OptionFlag::HAS_ARG | OptionFlag::OPT_STRING | OptionFlag::OPT_OFFSET | OptionFlag::OPT_INPUT | OptionFlag::OPT_OUTPUT,  off => format, "force format", "fmt"),
+        option_def!("f",              OptionFlag::HAS_ARG | OptionFlag::OPT_STRING | OptionFlag::OPT_OFFSET | OptionFlag::OPT_INPUT | OptionFlag::OPT_OUTPUT,  off => format, "force format", "fmt"),
+        option_def!("y",              OptionFlag::OPT_BOOL,                                     dst_ptr => file_overwrite, "overwrite output files"),
+        option_def!("n",              OptionFlag::OPT_BOOL,                                     dst_ptr => no_file_overwrite, "never overwrite output files"),
+        option_def!("ignore_unknown", OptionFlag::OPT_BOOL,                                     dst_ptr => ignore_unknown_streams, "Ignore unknown stream types"),
+        option_def!("copy_unknown",   OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,            dst_ptr => copy_unknown_streams, "Copy unknown stream types"),
+        option_def!("c",              OptionFlag::HAS_ARG | OptionFlag::OPT_STRING | OptionFlag::OPT_SPEC | OptionFlag::OPT_INPUT | OptionFlag::OPT_OUTPUT, off => codec_names, "codec name", "codec"),
+        option_def!("codec",          OptionFlag::HAS_ARG | OptionFlag::OPT_STRING | OptionFlag::OPT_SPEC | OptionFlag::OPT_INPUT | OptionFlag::OPT_OUTPUT, off => codec_names, "codec name", "codec"),
+        option_def!("pre",            OptionFlag::HAS_ARG | OptionFlag::OPT_STRING | OptionFlag::OPT_SPEC | OptionFlag::OPT_OUTPUT, off => presets, "preset name", "preset"),
+        option_def!("map",            OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT | OptionFlag::OPT_PERFILE | OptionFlag::OPT_OUTPUT, func_arg => opt_map, "set input stream mapping", "[-]input_file_id[:stream_specifier][,sync_file_id[:stream_specifier]]"),
+        option_def!("map_channel",    OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT | OptionFlag::OPT_PERFILE | OptionFlag::OPT_OUTPUT, func_arg => opt_map_channel, "map an audio channel from one stream to another", "file.stream.channel[:syncfile.syncstream]"),
+        option_def!("map_metadata",   OptionFlag::HAS_ARG | OptionFlag::OPT_STRING | OptionFlag::OPT_SPEC | OptionFlag::OPT_OUTPUT, off => metadata_map, "set metadata information of outfile from infile", "outfile[,metadata]:infile[,metadata]"),
+        option_def!("map_chapters",   OptionFlag::HAS_ARG | OptionFlag::OPT_INT | OptionFlag::OPT_EXPERT | OptionFlag::OPT_OFFSET | OptionFlag::OPT_OUTPUT, off => chapters_input_file, "set chapters mapping", "input_file_index"),
+        option_def!("t",              OptionFlag::HAS_ARG | OptionFlag::OPT_TIME | OptionFlag::OPT_OFFSET | OptionFlag::OPT_INPUT | OptionFlag::OPT_OUTPUT, off => recording_time, "record or transcode \"duration\" seconds of audio/video", "duration"),
+        option_def!("to",             OptionFlag::HAS_ARG | OptionFlag::OPT_TIME | OptionFlag::OPT_OFFSET | OptionFlag::OPT_INPUT | OptionFlag::OPT_OUTPUT,  off => stop_time, "record or transcode stop time", "time_stop"),
+        option_def!("fs",             OptionFlag::HAS_ARG | OptionFlag::OPT_INT64 | OptionFlag::OPT_OFFSET | OptionFlag::OPT_OUTPUT, off => limit_filesize, "set the limit file size in bytes", "limit_size"),
     ]
 });
 
 static mut hide_banner: bool = false;
+
+static mut intra_only: isize = 0;
+static mut file_overwrite: isize = 0;
+static mut no_file_overwrite: isize = 0;
+static mut do_psnr: isize = 0;
+static mut input_sync: isize = 0;
+static mut input_stream_potentially_available: isize = 0;
+static mut ignore_unknown_streams: isize = 0;
+static mut copy_unknown_streams: isize = 0;
+static mut find_stream_info: isize = 1;
+
+fn opt_map(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    0
+}
+
+fn opt_map_channel(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
+    0
+}
 
 fn show_license(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
     print!(
