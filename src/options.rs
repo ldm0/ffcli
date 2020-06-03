@@ -10,67 +10,102 @@ use crate::cmdutils::{
     OptionParseContext,
 };
 
+macro_rules! void {
+    ($x: expr) => {
+        unsafe { &mut $x as *mut _ as *mut c_void }
+    };
+}
+
+
 macro_rules! option_operation {
-    ($operation_ident: ident => $operation: expr) => {
+    (dst_ptr => $operation: expr) => {
         OptionOperation {
-            $operation_ident: $operation,
+            dst_ptr: void!($operation),
+        }
+    };
+    (func_arg => $operation: expr) => {
+        OptionOperation {
+            func_arg: $operation,
+        }
+    };
+    (off => $operation: expr) => {
+        OptionOperation {
+            off: $operation,
         }
     };
 }
 
 macro_rules! option_def {
-    ($name: literal, $flags: expr, $operation_ident: ident => $operation: expr, $help: literal) => {
-        OptionDef {
-            name: $name,
-            help: $help,
-            argname: None,
-            flags: $flags,
-            u: OptionOperation {
-                $operation_ident: $operation,
-            },
-        }
+    ($name: literal, $flags: expr, dst_ptr => $operation: expr, $help: literal) => {
+        option_def! (
+            @inner $name, $flags,
+            option_operation!(dst_ptr => $operation),
+            $help, None
+        )
     };
-    ($name: literal, $flags: expr, $operation_ident: ident => $operation: expr, $help: literal, $argname: literal) => {
+    ($name: literal, $flags: expr, func_arg => $operation: expr, $help: literal) => {
+        option_def! (
+            @inner $name, $flags,
+            option_operation!(func_arg => $operation),
+            $help, None
+        )
+    };
+    ($name: literal, $flags: expr, off => $operation: expr, $help: literal) => {
+        option_def! (
+            @inner $name, $flags,
+            option_operation!(off => $operation),
+            $help, None
+        )
+    };
+    ($name: literal, $flags: expr, dst_ptr => $operation: expr, $help: literal, $argname: literal) => {
+        option_def! (
+            @inner $name, $flags,
+            option_operation!(dst_ptr => $operation),
+            $help, Some($argname)
+        )
+    };
+    ($name: literal, $flags: expr, func_arg => $operation: expr, $help: literal, $argname: literal) => {
+        option_def! (
+            @inner $name, $flags,
+            option_operation!(func_arg => $operation),
+            $help, Some($argname)
+        )
+    };
+    ($name: literal, $flags: expr, off => $operation: expr, $help: literal, $argname: literal) => {
+        option_def! (
+            @inner $name, $flags,
+            option_operation!(off => $operation),
+            $help, Some($argname)
+        )
+    };
+    (@inner $name: literal, $flags: expr, $u: expr, $help: literal, $argname: expr) => {
         OptionDef {
             name: $name,
             help: $help,
-            argname: Some($argname),
+            argname: $argname,
             flags: $flags,
-            u: OptionOperation {
-                $operation_ident: $operation,
-            },
+            u: $u,
         }
     };
 }
 
 macro_rules! option_group_def {
     ($name: literal) => {
-        OptionGroupDef {
-            name: $name,
-            sep: None,
-            flags: OptionFlag::NONE,
-        }
+        option_group_def!(@inner $name, None, OptionFlag::NONE)
     };
     ($name: literal, $flags: expr) => {
-        OptionGroupDef {
-            name: $name,
-            sep: None,
-            flags: $flags,
-        }
+        option_group_def!(@inner $name, None, $flags)
     };
     ($name: literal, $separator: literal, $flags: expr) => {
+        option_group_def!(@inner $name, Some($separator), $flags)
+    };
+    (@inner $name: literal, $separator: expr, $flags: expr) => {
         OptionGroupDef {
             name: $name,
-            sep: Some($separator),
+            sep: $separator,
             flags: $flags,
         }
-    };
-}
-
-macro_rules! void {
-    ($x: expr) => {
-        unsafe { &mut $x as *mut _ as *mut c_void }
-    };
+    }
 }
 
 pub static GROUPS: Lazy<[OptionGroupDef; 2]> = Lazy::new(|| {
@@ -80,8 +115,10 @@ pub static GROUPS: Lazy<[OptionGroupDef; 2]> = Lazy::new(|| {
     ]
 });
 
+/// The options list is in ffmpeg_opt.c originally, but we move it here for cleanness.
 pub static OPTIONS: Lazy<[OptionDef; 29]> = Lazy::new(|| {
     [
+        // Common options
         option_def!("L",            OptionFlag::OPT_EXIT,               func_arg => show_license,     "show license"),
         option_def!("h",            OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
         option_def!("?",            OptionFlag::OPT_EXIT,               func_arg => show_help,        "show help", "topic"),
@@ -108,7 +145,7 @@ pub static OPTIONS: Lazy<[OptionDef; 29]> = Lazy::new(|| {
         option_def!("report",       OptionFlag::NONE,                   func_arg => opt_report,       "generate a report"),
         option_def!("max_alloc",    OptionFlag::HAS_ARG,                func_arg => opt_max_alloc,    "set maximum size of a single allocated block", "bytes"),
         option_def!("cpuflags",     OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT,   func_arg => opt_cpuflags,       "force specific cpu flags", "flags"),
-        option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => void!(hide_banner),  "do not show program banner", "hide_banner"),
+        option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => hide_banner,  "do not show program banner", "hide_banner"),
         option_def!("sources",      OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sources,       "list sources of the input device", "device"),
         option_def!("sinks",        OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sinks,         "list sinks of the output device", "device"),
     ]
