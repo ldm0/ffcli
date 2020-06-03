@@ -5,14 +5,23 @@
 use libc::c_void;
 use once_cell::sync::Lazy;
 
-use crate::cmdutils::{
-    OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV, OptionOperation,
-    OptionParseContext,
+use crate::{
+    cmdutils::{
+        OptionDef, OptionFlag, OptionGroup, OptionGroupDef, OptionGroupList, OptionKV, OptionOperation,
+        OptionParseContext,
+    },
+    ffmpeg::OptionsContext,
 };
+
+macro_rules! offset {
+    ($ty: tt, $field: ident) => {
+        unsafe { &raw const ((*(0 as *const $ty)).$field) } as usize
+    };
+}
 
 macro_rules! void {
     ($x: expr) => {
-        unsafe { &mut $x as *mut _ as *mut c_void }
+        unsafe { &raw mut $x as *mut c_void }
     };
 }
 
@@ -28,9 +37,9 @@ macro_rules! option_operation {
             func_arg: $operation,
         }
     };
-    (off => $operation: expr) => {
+    (off => $operation: ident) => {
         OptionOperation {
-            off: $operation,
+            off: offset!(OptionsContext, $operation),
         }
     };
 }
@@ -50,7 +59,7 @@ macro_rules! option_def {
             $help, None
         )
     };
-    ($name: literal, $flags: expr, off => $operation: expr, $help: literal) => {
+    ($name: literal, $flags: expr, off => $operation: ident, $help: literal) => {
         option_def! (
             @inner $name, $flags,
             option_operation!(off => $operation),
@@ -71,7 +80,7 @@ macro_rules! option_def {
             $help, Some($argname)
         )
     };
-    ($name: literal, $flags: expr, off => $operation: expr, $help: literal, $argname: literal) => {
+    ($name: literal, $flags: expr, off => $operation: ident, $help: literal, $argname: literal) => {
         option_def! (
             @inner $name, $flags,
             option_operation!(off => $operation),
@@ -116,7 +125,7 @@ pub static GROUPS: Lazy<[OptionGroupDef; 2]> = Lazy::new(|| {
 });
 
 /// The options list is in ffmpeg_opt.c originally, but we move it here for cleanness.
-pub static OPTIONS: Lazy<[OptionDef; 29]> = Lazy::new(|| {
+pub static OPTIONS: Lazy<[OptionDef; 30]> = Lazy::new(|| {
     [
         // Common options
         option_def!("L",            OptionFlag::OPT_EXIT,               func_arg => show_license,     "show license"),
@@ -143,11 +152,13 @@ pub static OPTIONS: Lazy<[OptionDef; 29]> = Lazy::new(|| {
         option_def!("loglevel",     OptionFlag::HAS_ARG,                func_arg => opt_loglevel,     "set logging level", "loglevel"),
         option_def!("v",            OptionFlag::HAS_ARG,                func_arg => opt_loglevel,     "set logging level", "loglevel"),
         option_def!("report",       OptionFlag::NONE,                   func_arg => opt_report,       "generate a report"),
-        option_def!("max_alloc",    OptionFlag::HAS_ARG,                func_arg => opt_max_alloc,    "set maximum size of a single allocated block", "bytes"),
-        option_def!("cpuflags",     OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT,   func_arg => opt_cpuflags,       "force specific cpu flags", "flags"),
-        option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => hide_banner,  "do not show program banner", "hide_banner"),
+        option_def!("max_alloc",    OptionFlag::HAS_ARG,                func_arg => opt_max_alloc,    "set maximum size of a single allocated block",   "bytes"),
+        option_def!("cpuflags",     OptionFlag::HAS_ARG | OptionFlag::OPT_EXPERT,   func_arg => opt_cpuflags,       "force specific cpu flags",         "flags"),
+        option_def!("hide_banner",  OptionFlag::OPT_BOOL | OptionFlag::OPT_EXPERT,  dst_ptr => hide_banner,         "do not show program banner",       "hide_banner"),
         option_def!("sources",      OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sources,       "list sources of the input device", "device"),
-        option_def!("sinks",        OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sinks,         "list sinks of the output device", "device"),
+        option_def!("sinks",        OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG,     func_arg => show_sinks,         "list sinks of the output device",  "device"),
+        // FFmpeg main options
+        option_def!("f",            OptionFlag::HAS_ARG | OptionFlag::OPT_STRING | OptionFlag::OPT_OFFSET | OptionFlag::OPT_INPUT | OptionFlag::OPT_OUTPUT,  off => format, "force format", "fmt"),
     ]
 });
 
