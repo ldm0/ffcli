@@ -2,14 +2,17 @@ use libc::c_void;
 use log::{debug, error};
 
 use crate::ffmpeg::OptionsContext;
+use bitflags::bitflags;
+use std::{default, fmt, marker};
 
 enum OptGroup {
     GroupOutfile = 0,
     GroupInfile = 1,
 }
 
-use bitflags::bitflags;
-use std::{default, fmt, marker};
+// TODO implement all error number later, might in a separate file
+// TODO change this to FFERRTAG later.
+const AVERROR_OPTION_NOT_FOUND: isize = 3;
 
 bitflags! {
     #[derive(Default)]
@@ -466,11 +469,21 @@ pub fn split_commandline<'ctxt, 'global>(
         }
 
         // AVOptions
-        /*
-        if let Some(opt) = argv.get(optindex) {
-            unimplemented!();
+        if let Some(arg) = argv.get(optindex) {
+            // Hint: `rust_analyzer` failed to parse following code
+            match opt_default(std::ptr::null_mut(), opt, arg) {
+                0.. => {
+                    debug!(" matched as AVOption '{}' with argument '{}'.", opt, arg);
+                    optindex += 1;
+                    continue;
+                }
+                AVERROR_OPTION_NOT_FOUND => {
+                    debug!("Error parsing option '{}' with argument '{}'.\n", opt, arg);
+                    return Err(());
+                }
+                _ => {}
+            }
         }
-        */
 
         // boolean -nofoo options
         if opt.starts_with("no") {
@@ -497,6 +510,12 @@ pub fn split_commandline<'ctxt, 'global>(
     debug!("Finished splitting the commandline.");
     Ok(())
 }
+
+fn opt_default(optctx: *mut c_void, opt: &str, arg: &str) -> isize {
+    error!("opt_default() heavily uses functions in the libavutil, currently assume {}: {} is a valid AVOption pair.", opt, arg);
+    0
+}
+
 
 fn match_group_separator(groups: &[OptionGroupDef], opt: &str) -> Option<usize> {
     groups
