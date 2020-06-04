@@ -407,7 +407,7 @@ pub fn split_commandline<'ctxt, 'global>(
 
         // unnamed group separators, e.g. output filename
         if !opt.starts_with('-') || opt.len() <= 1 || dashdash == Some(optindex - 1) {
-            // IMPROVEMENT original FFmpeg use 0 rather than enum value here.
+            // IMPROVEMENT original FFmpeg uses 0 rather than enum value here.
             finish_group(octx, OptGroup::GroupOutfile as usize, opt);
             debug!(
                 " matched as {}.",
@@ -437,14 +437,21 @@ pub fn split_commandline<'ctxt, 'global>(
 
         // Normal options
         if let Some(po) = find_option(options, opt) {
-            // IMPROVEMENT original FFmpeg uses GET_ARG here, but it
-            // actually will never throws error
-            let arg = if po
-                .flags
-                .intersects(OptionFlag::OPT_EXIT | OptionFlag::HAS_ARG)
-            {
+            let arg = if po.flags.intersects(OptionFlag::OPT_EXIT) {
                 // Optional argument, e.g. -h
-                let arg = &argv[optindex];
+
+                // Yes, we cannot use unwrap_or() here because a coercion needed.
+                let arg = match argv.get(optindex) {
+                    Some(x) => x,
+                    None => "",
+                };
+                optindex += 1;
+                arg
+            } else if po.flags.intersects(OptionFlag::HAS_ARG) {
+                let arg = match argv.get(optindex) {
+                    Some(x) => x,
+                    None => return Err(()),
+                };
                 optindex += 1;
                 arg
             } else {
