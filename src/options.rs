@@ -144,6 +144,7 @@ pub static GROUPS: Lazy<[OptionGroupDef; 2]> = Lazy::new(|| {
 /// 16. `\| O` => `| OptionFlag::O`
 /// 17. `\| OptionFlag::H` => `| OptionFlag::H`
 pub static OPTIONS: Lazy<[OptionDef; 179]> = Lazy::new(|| {
+    // Dev note: The `OptionFlag::` cannot be removed because currently rust cannot use const member in impl
     [
         // Common options
         option_def!("L",            OptionFlag::OPT_EXIT,               func_arg => show_license,     "show license"),
