@@ -166,12 +166,21 @@ pub union SpecifierOptValue {
     pub dbl: f64,
 }
 
+impl fmt::Debug for SpecifierOptValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("(Union)SpecifierOptValue")
+            .field("val", unsafe { &self.i })
+            .finish()
+    }
+}
+
 impl default::Default for SpecifierOptValue {
     fn default() -> Self {
         SpecifierOptValue { i: 0 }
     }
 }
 
+#[derive(Debug, Default)]
 pub struct SpecifierOpt {
     pub specifier: String,
     pub u: SpecifierOptValue,
@@ -389,7 +398,7 @@ pub fn split_commandline<'ctxt, 'global>(
         let opt = &argv[optindex];
         optindex += 1;
 
-        print!("Reading option '{}' ...", opt);
+        debug!("Reading option '{}' ...", opt);
 
         if opt == "--" {
             dashdash = Some(optindex);
@@ -512,10 +521,7 @@ fn find_option<'global>(
     name: &str,
 ) -> Option<&'global OptionDef<'global>> {
     let mut splits = name.split(':');
-    let name = match splits.next() {
-        Some(x) => x,
-        None => return None,
-    };
+    let name = splits.next()?;
     options.iter().find(|&option_def| option_def.name == name)
 }
 

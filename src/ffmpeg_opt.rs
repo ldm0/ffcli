@@ -30,5 +30,6 @@ pub fn ffmpeg_parse_options(args: &[String]) {
     };
 
     split_commandline(&mut octx, &args, &*OPTIONS, &*GROUPS).unwrap();
+    println!("{:#?}", octx);
     parse_opt_group(None, &octx.global_opts).unwrap();
 }
