@@ -516,7 +516,6 @@ fn opt_default(optctx: *mut c_void, opt: &str, arg: &str) -> isize {
     0
 }
 
-
 fn match_group_separator(groups: &[OptionGroupDef], opt: &str) -> Option<usize> {
     groups
         .iter()
