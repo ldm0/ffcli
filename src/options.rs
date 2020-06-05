@@ -3,6 +3,7 @@
 // This will be finally removed, but in development stage it's useful
 #![allow(unused_variables)]
 use libc::{c_char, c_void};
+use memoffset::offset_of;
 use once_cell::sync::Lazy;
 
 use crate::{
@@ -12,12 +13,6 @@ use crate::{
     },
     ffmpeg::OptionsContext,
 };
-
-macro_rules! offset {
-    ($ty: tt, $field: ident) => {
-        unsafe { &raw const ((*(0 as *const $ty)).$field) } as usize
-    };
-}
 
 macro_rules! void {
     ($x: expr) => {
@@ -38,7 +33,7 @@ macro_rules! option_operation {
     };
     (off => $operation: ident) => {
         OptionOperation {
-            off: offset!(OptionsContext, $operation),
+            off: offset_of!(OptionsContext, $operation),
         }
     };
 }
