@@ -6,6 +6,8 @@ This project is meant to build FFmpeg command line arguments parser. This is rou
 
 You can test by using `cargo test`.
 
+To build it, you should compile the FFmpeg then use the `PKG_CONFIG_PATH="$HOME/ffmpeg_build/lib/pkgconfig" cargo build` to build it(where `PKG_CONFIG_PATH` points to `*.pc` files in the FFmpeg build result).
+
 And you can use `RUST_LOG=debug cargo run -- -i input -c:v libx264 -profile:v main -preset:v fast -level 3.1 -x264opts crf=18 ` to check program outputs (I changed the `av_log`s in FFmpeg's source code to `log::{debug, error}`, so you will see roughly the same debug message when specific parameters are given.)
 
 Current output:
