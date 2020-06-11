@@ -1,9 +1,12 @@
 use libc::c_void;
 use log::{debug, error};
 
-use crate::ffmpeg::OptionsContext;
 use bitflags::bitflags;
-use std::{default, fmt, marker};
+use rusty_ffmpeg::{av_parse_time, av_strtod};
+
+use std::{default, ffi::CString, fmt, marker, ptr};
+
+use crate::ffmpeg::OptionsContext;
 
 enum OptGroup {
     GroupOutfile = 0,
@@ -231,44 +234,45 @@ pub fn parse_number(
     min: f64,
     max: f64,
 ) -> Result<f64, String> {
-    // TODO after creating binding to libavutil, use av_strtod()
-    let d = numstr.parse::<f64>();
-    let error = match d {
-        Err(_) => format!("Expected number for {} but found: {}", context, numstr),
-        Ok(d) => {
-            if d < min || d > max {
-                format!(
-                    "The value for {} was {} which is not within {} - {}",
-                    context, numstr, min, max
-                )
-            } else if num_type == OptionFlag::OPT_INT64 && d as i64 as f64 != d {
-                format!("Expected int64 for {} but found {}", context, numstr)
-            } else if num_type == OptionFlag::OPT_INT && d as isize as f64 != d {
-                format!("Expected int for {} but found {}", context, numstr)
-            } else {
-                return Ok(d);
-            }
+    let numstr_ptr = CString::new(numstr).unwrap().as_ptr();
+    let mut tail: *mut libc::c_char = ptr::null_mut();
+    let d = unsafe { av_strtod(numstr_ptr, &mut tail) };
+    let error = if tail.is_null() {
+        format!("Expected number for {} but found: {}", context, numstr)
+    } else {
+        if d < min || d > max {
+            format!(
+                "The value for {} was {} which is not within {} - {}",
+                context, numstr, min, max
+            )
+        } else if num_type == OptionFlag::OPT_INT64 && d as i64 as f64 != d {
+            format!("Expected int64 for {} but found {}", context, numstr)
+        } else if num_type == OptionFlag::OPT_INT && d as isize as f64 != d {
+            format!("Expected int for {} but found {}", context, numstr)
+        } else {
+            return Ok(d);
         }
     };
     Err(error)
 }
 
-fn parse_time(_context: &str, _timestr: &str, _is_duration: bool) -> Result<i64, String> {
-    // TODO after inner library binding, use the av_parse_time()
-    error!("av_parse_time() currently haven't been binded! Return placeholder currently");
-    /*
-    int64_t us;
-    if (av_parse_time(&us, timestr, is_duration) < 0) {
-        av_log(NULL, AV_LOG_FATAL, "Invalid %s specification for %s: %s\n",
-               is_duration ? "duration" : "date", context, timestr);
-        exit_program(1);
+fn parse_time(context: &str, timestr: &str, is_duration: bool) -> Result<i64, String> {
+    let mut us = 0;
+    let timestr_ptr = CString::new(timestr).unwrap().as_ptr();
+    if unsafe { av_parse_time(&mut us, timestr_ptr, if is_duration { 1 } else { 0 }) } > 0 {
+        Err(format!(
+            "Invalid {} specification for {}: {}",
+            if is_duration { "duration" } else { "date" },
+            context,
+            timestr
+        ))
+    } else {
+        Ok(us)
     }
-    */
-    return Ok(42);
 }
 
 /// If failed, panic with some description.
-/// TODO: change this function to return  Result later
+/// TODO: change this function to return corresponding Result later
 fn write_option(
     optctx: &mut Option<&mut OptionsContext>,
     po: &OptionDef,
