@@ -2,7 +2,7 @@ use libc::c_void;
 use log::{debug, error};
 
 use bitflags::bitflags;
-use rusty_ffmpeg::{av_parse_time, av_strtod};
+use rusty_ffmpeg::ffi::{av_parse_time, av_strtod};
 
 use std::{default, ffi::CString, fmt, marker, ptr};
 
