@@ -1,10 +1,13 @@
-use libc::c_void;
-use log::{debug, error};
-
 use bitflags::bitflags;
-use rusty_ffmpeg::ffi::{av_parse_time, av_strtod};
+use libc::c_void;
+use log::{debug, error, info};
+use once_cell::sync::Lazy;
+use rusty_ffmpeg::ffi::{
+    av_opt_find, av_parse_time, av_strtod, avcodec_get_class, avformat_get_class, swr_get_class,
+    sws_get_class, AVClass, AVOption, AV_OPT_SEARCH_CHILDREN, AV_OPT_SEARCH_FAKE_OBJ,
+};
 
-use std::{default, ffi::CString, fmt, marker, ptr};
+use std::{cmp, collections::HashMap, default, ffi::CString, fmt, marker, ptr, sync::Mutex};
 
 use crate::ffmpeg::OptionsContext;
 
@@ -42,6 +45,13 @@ bitflags! {
         const OPT_OUTPUT    = 0x80000;
     }
 }
+
+static FORMAT_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static CODEC_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static SWS_DICT: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static SWR_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static RESAMPLE_OPTS: Lazy<Mutex<HashMap<String, String>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub union OptionOperation {
     pub dst_ptr: *mut c_void,
@@ -158,8 +168,8 @@ pub struct OptionParseContext<'global> {
     pub groups: Vec<OptionGroupList<'global>>,
     /// Parsing state
     /// Attention: The group_def in the cur_group has never been used, so we just
-    /// use create a placeholder. More attractive option is change the cur_group
-    /// from OptionGroup to tuple (arg: String, opts: Vec<OptionKV>).
+    /// use create a placeholder. More attractive option is changing the
+    /// cur_group from OptionGroup to tuple (arg: String, opts: Vec<OptionKV>).
     pub cur_group: OptionGroup<'global>,
 }
 
@@ -475,7 +485,11 @@ pub fn split_commandline<'ctxt, 'global>(
         // AVOptions
         if let Some(arg) = argv.get(optindex) {
             // Hint: `rust_analyzer` failed to parse following code
-            match opt_default(std::ptr::null_mut(), opt, arg) {
+            // Process common options and process AVOption by the way(the
+            // function name is not that self-explaining), **where some global
+            // option directory is fulfilled**(this is extremely weird for me to
+            // understand).
+            match opt_default(ptr::null_mut(), opt, arg) {
                 0.. => {
                     debug!(" matched as AVOption '{}' with argument '{}'.", opt, arg);
                     optindex += 1;
@@ -506,8 +520,11 @@ pub fn split_commandline<'ctxt, 'global>(
         return Err(());
     }
 
-    if !octx.cur_group.opts.is_empty() {
-        // actually or (codec_opts || format_opts || resample_opts) but currently haven't implement this.
+    if !octx.cur_group.opts.is_empty()
+        || !CODEC_OPTS.lock().unwrap().is_empty()
+        || !FORMAT_OPTS.lock().unwrap().is_empty()
+        || !RESAMPLE_OPTS.lock().unwrap().is_empty()
+    {
         debug!("Trailing option(s) found in the command: may be ignored.");
     }
 
@@ -515,9 +532,83 @@ pub fn split_commandline<'ctxt, 'global>(
     Ok(())
 }
 
-fn opt_default(optctx: *mut c_void, opt: &str, arg: &str) -> isize {
-    error!("opt_default() heavily uses functions in the libavutil, currently assume {}: {} is a valid AVOption pair.", opt, arg);
-    0
+fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> isize {
+    if opt == "debug" || opt == "fdebug" {
+        // TODO implement equivalent function of av_log_set_level()
+        info!("debug is currently not implemented, debug is the default");
+    }
+    let opt_stripped = CString::new(opt.split(':').next().unwrap()).unwrap();
+    let opt_head = opt.chars().next();
+    // This is unicode-safe because it's only used when first char is ascii.
+    let opt_nohead = opt.get(1..).map(|x| CString::new(x).unwrap());
+
+    let opt_c = CString::new(opt).unwrap();
+    let arg_c = CString::new(arg).unwrap();
+
+    let (opt_ptr, arg_ptr) = (opt_c.as_ptr(), arg_c.as_ptr());
+
+    let mut cc = unsafe { avcodec_get_class() };
+    let mut fc = unsafe { avformat_get_class() };
+    /* Currently not supported, they seems to be used less often.
+    let sc = sws_get_class();
+    let swr_class = swr_get_class();
+    */
+
+    let mut consumed = false;
+    if opt_find(
+        &mut cc as *mut _ as *mut c_void,
+        opt_stripped.as_ptr(),
+        ptr::null(),
+        0,
+        AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
+    ) || ((opt_head == Some('v') || opt_head == Some('a') || opt_head == Some('s'))
+        && opt_find(
+            &mut cc as *mut _ as *mut c_void,
+            opt_nohead.unwrap().as_ptr(),
+            ptr::null(),
+            0,
+            AV_OPT_SEARCH_FAKE_OBJ,
+        ))
+    {
+        CODEC_OPTS.lock().unwrap().insert(opt.into(), arg.into());
+        consumed = true;
+    }
+    if opt_find(
+        &mut fc as *mut _ as *mut c_void,
+        opt_ptr,
+        ptr::null(),
+        0,
+        AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
+    ) {
+        FORMAT_OPTS.lock().unwrap().insert(opt.into(), arg.into());
+        consumed = true;
+    }
+
+    // TODO: init things about SWRESAMPLE SWSCALE
+
+    if consumed {
+        0
+    } else {
+        AVERROR_OPTION_NOT_FOUND
+    }
+}
+
+/// Whether a valid option is found.
+fn opt_find(
+    obj: *mut c_void,
+    name: *const libc::c_char,
+    unit: *const libc::c_char,
+    opt_flags: u32,
+    search_flags: u32,
+) -> bool {
+    let o = unsafe { av_opt_find(obj, name, unit, opt_flags as i32, search_flags as i32) };
+    if o.is_null() {
+        false
+    } else if unsafe { o.as_ref() }.unwrap().flags == 0 {
+        false
+    } else {
+        true
+    }
 }
 
 fn match_group_separator(groups: &[OptionGroupDef], opt: &str) -> Option<usize> {
@@ -536,19 +627,23 @@ fn finish_group(octx: &mut OptionParseContext, group_idx: usize, arg: &str) {
     new_group.arg = arg.to_owned();
     new_group.group_def = octx.groups[group_idx].group_def;
 
-    // FUTURE FEATURE: initialization for codec_opts
-
     octx.groups[group_idx].groups.push(new_group);
-
-    // FUTURE FEATURE: call init_opts()
-
     octx.cur_group = OptionGroup::new_anonymous();
+    init_opts();
+}
+
+fn init_opts() {
+    SWS_DICT
+        .lock()
+        .unwrap()
+        .insert("flags".into(), "bicubic".into());
 }
 
 fn find_option<'global>(
     options: &'global [OptionDef<'global>],
     name: &str,
 ) -> Option<&'global OptionDef<'global>> {
+    // TODAY can theses two lines be simplified?
     let mut splits = name.split(':');
     let name = splits.next()?;
     options.iter().find(|&option_def| option_def.name == name)

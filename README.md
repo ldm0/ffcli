@@ -2,7 +2,7 @@
 
 This project is meant to build FFmpeg command line arguments parser. This is roughly a ported ffmpeg.
 
-`AVOptions` have not been supported.
+`AVOptions` have not been fully supported(options related to SWRESAMPLE and SWSCALE is not supported).
 
 You can test by using `cargo test`.
 
@@ -12,24 +12,21 @@ And you can use `cargo run -- -i input -c:v libx264 -profile:v main -preset:v fa
 
 Current output:
 ```rust
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Splitting the commandline.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Reading option '-i' ...
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils]  matched as input url with argument 'input'.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Reading option '-c:v' ...
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils]  matched as option 'c' (codec name) with argument '"libx264"'.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Reading option '-profile:v' ...
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils]  matched as option 'profile' (set profile) with argument '"main"'.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Reading option '-preset:v' ...
-[2020-06-04T18:15:49Z ERROR ffcli::cmdutils] opt_default() heavily uses functions in the libavutil, currently assume preset:v: fast is a valid AVOption pair.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils]  matched as AVOption 'preset:v' with argument 'fast'.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Reading option '-level' ...
-[2020-06-04T18:15:49Z ERROR ffcli::cmdutils] opt_default() heavily uses functions in the libavutil, currently assume level: 3.1 is a valid AVOption pair.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils]  matched as AVOption 'level' with argument '3.1'.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Reading option '-x264opts' ...
-[2020-06-04T18:15:49Z ERROR ffcli::cmdutils] opt_default() heavily uses functions in the libavutil, currently assume x264opts: crf=18 is a valid AVOption pair.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils]  matched as AVOption 'x264opts' with argument 'crf=18'.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Trailing option(s) found in the command: may be ignored.
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Finished splitting the commandline.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Splitting the commandline.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Reading option '-i' ...
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils]  matched as input url with argument 'input'.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Reading option '-c:v' ...
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils]  matched as option 'c' (codec name) with argument '"libx264"'.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Reading option '-profile:v' ...
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils]  matched as option 'profile' (set profile) with argument '"main"'.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Reading option '-preset:v' ...
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils]  matched as AVOption 'preset:v' with argument 'fast'.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Reading option '-level' ...
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils]  matched as AVOption 'level' with argument '3.1'.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Reading option '-x264opts' ...
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils]  matched as AVOption 'x264opts' with argument 'crf=18'.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Trailing option(s) found in the command: may be ignored.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Finished splitting the commandline.
 OptionParseContext {
     global_opts: OptionGroup {
         group_def: OptionGroupDef {
@@ -104,7 +101,7 @@ OptionParseContext {
                     ),
                     flags: HAS_ARG | OPT_EXPERT | OPT_PERFILE | OPT_OUTPUT,
                     u: (Union)OptionOperation {
-                        val: 140697315024544,
+                        val: 94742012944672,
                     },
                 },
                 key: "profile:v",
@@ -113,8 +110,8 @@ OptionParseContext {
         ],
     },
 }
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Parsing a group of options: global .
-[2020-06-04T18:15:49Z DEBUG ffcli::cmdutils] Successfully parsed a group of options.
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Parsing a group of options: global .
+[2020-06-23T18:56:50Z DEBUG ffcli::cmdutils] Successfully parsed a group of options.
 ```
 
 This program is under the original license of FFmpeg.
