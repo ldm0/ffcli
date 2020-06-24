@@ -8,6 +8,7 @@ use crate::{
 
 use ffmpeg_opt::ffmpeg_parse_options;
 
+#[derive(Debug, Default)]
 pub struct StreamMap {
     pub disabled: isize,
     pub file_index: isize,
@@ -17,6 +18,7 @@ pub struct StreamMap {
     pub linklabel: String,
 }
 
+#[derive(Debug, Default)]
 pub struct AudioChannelMap {
     // input
     pub file_idx: isize,
@@ -27,8 +29,9 @@ pub struct AudioChannelMap {
     pub ostream_idx: isize,
 }
 
+#[derive(Debug, Default)]
 pub struct OptionsContext<'a, 'global> {
-    pub g: OptionGroup<'global>,
+    pub g: Option<&'global OptionGroup<'global>>,
 
     // input/output options
     pub start_time: i64,
@@ -120,6 +123,25 @@ pub struct OptionsContext<'a, 'global> {
     pub program: Vec<SpecifierOpt>,
     pub time_bases: Vec<SpecifierOpt>,
     pub enc_time_bases: Vec<SpecifierOpt>,
+}
+
+
+impl<'a, 'global> OptionsContext<'a, 'global> {
+    pub fn new(group: Option<&'global OptionGroup<'global>>) -> Self {
+        Self {
+            g: group,
+            stop_time: i64::MAX,
+            mux_max_delay: 0.7,
+            // Unable to be generated: use rusty_ffmpeg::ffi::AV_NOPTS_VALUE;
+            start_time: 0x8000000000000000u64 as i64,
+            start_time_eof: 0x8000000000000000u64 as i64,
+            recording_time: i64::MAX,
+            limit_filesize: u64::MAX,
+            chapters_input_file: isize::MAX,
+            accurate_seek: 1,
+            ..Default::default()
+        }
+    }
 }
 
 pub fn ffmpeg() {

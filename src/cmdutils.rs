@@ -203,7 +203,7 @@ pub struct SpecifierOpt {
 }
 
 /// This function accepts moved Option value with the OptionsContext it references to unchanged.
-pub fn parse_opt_group<'ctxt>(
+pub fn parse_optgroup<'ctxt>(
     mut optctx: Option<&mut OptionsContext>,
     g: &OptionGroup,
 ) -> Result<(), ()> {
