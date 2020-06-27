@@ -2,12 +2,19 @@ use bitflags::bitflags;
 use libc::c_void;
 use log::{debug, error, info};
 use once_cell::sync::Lazy;
-use rusty_ffmpeg::ffi::{
-    av_opt_find, av_parse_time, av_strtod, avcodec_get_class, avformat_get_class, swr_get_class,
-    sws_get_class, AVClass, AVOption, AV_OPT_SEARCH_CHILDREN, AV_OPT_SEARCH_FAKE_OBJ,
+use rusty_ffmpeg::{
+    avutil::{avutils::*, error::*},
+    ffi,
 };
 
-use std::{cmp, collections::HashMap, default, ffi::CString, fmt, marker, ptr, sync::Mutex};
+use std::{
+    cmp,
+    collections::HashMap,
+    default,
+    ffi::{CStr, CString},
+    fmt, marker, mem, ptr, slice,
+    sync::Mutex,
+};
 
 use crate::ffmpeg::OptionsContext;
 
@@ -46,6 +53,7 @@ bitflags! {
     }
 }
 
+// Consider changing them to AVDictionary if needed.
 static FORMAT_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static CODEC_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static SWS_DICT: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
@@ -113,13 +121,11 @@ pub struct OptionGroup<'global> {
     pub group_def: &'global OptionGroupDef<'global>,
     pub arg: String,
     pub opts: Vec<OptionKV<'global>>,
-    /* Ignore them currently
-    AVDictionary *codec_opts;
-    AVDictionary *format_opts;
-    AVDictionary *resample_opts;
-    AVDictionary *sws_dict;
-    AVDictionary *swr_opts;
-    */
+    pub codec_opts: *mut ffi::AVDictionary,
+    pub format_opts: *mut ffi::AVDictionary,
+    pub resample_opts: *mut ffi::AVDictionary,
+    pub sws_dict: *mut ffi::AVDictionary,
+    pub swr_opts: *mut ffi::AVDictionary,
 }
 
 impl<'global> OptionGroup<'global> {
@@ -133,6 +139,11 @@ impl<'global> OptionGroup<'global> {
             group_def: &GLOBAL_GROUP,
             arg: String::new(),
             opts: vec![],
+            codec_opts: ptr::null_mut(),
+            format_opts: ptr::null_mut(),
+            resample_opts: ptr::null_mut(),
+            sws_dict: ptr::null_mut(),
+            swr_opts: ptr::null_mut(),
         }
     }
 
@@ -148,6 +159,11 @@ impl<'global> OptionGroup<'global> {
             group_def: &NEVER_USE_GROUP,
             arg: String::new(),
             opts: vec![],
+            codec_opts: ptr::null_mut(),
+            format_opts: ptr::null_mut(),
+            resample_opts: ptr::null_mut(),
+            sws_dict: ptr::null_mut(),
+            swr_opts: ptr::null_mut(),
         }
     }
 }
@@ -246,7 +262,7 @@ pub fn parse_number(
 ) -> Result<f64, String> {
     let numstr_ptr = CString::new(numstr).unwrap().as_ptr();
     let mut tail: *mut libc::c_char = ptr::null_mut();
-    let d = unsafe { av_strtod(numstr_ptr, &mut tail) };
+    let d = unsafe { ffi::av_strtod(numstr_ptr, &mut tail) };
     let error = if tail.is_null() {
         format!("Expected number for {} but found: {}", context, numstr)
     } else {
@@ -269,7 +285,7 @@ pub fn parse_number(
 fn parse_time(context: &str, timestr: &str, is_duration: bool) -> Result<i64, String> {
     let mut us = 0;
     let timestr_ptr = CString::new(timestr).unwrap().as_ptr();
-    if unsafe { av_parse_time(&mut us, timestr_ptr, if is_duration { 1 } else { 0 }) } > 0 {
+    if unsafe { ffi::av_parse_time(&mut us, timestr_ptr, if is_duration { 1 } else { 0 }) } > 0 {
         Err(format!(
             "Invalid {} specification for {}: {}",
             if is_duration { "duration" } else { "date" },
@@ -547,8 +563,8 @@ fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> isize {
 
     let (opt_ptr, arg_ptr) = (opt_c.as_ptr(), arg_c.as_ptr());
 
-    let mut cc = unsafe { avcodec_get_class() };
-    let mut fc = unsafe { avformat_get_class() };
+    let mut cc = unsafe { ffi::avcodec_get_class() };
+    let mut fc = unsafe { ffi::avformat_get_class() };
     /* Currently not supported, they seems to be used less often.
     let sc = sws_get_class();
     let swr_class = swr_get_class();
@@ -560,14 +576,14 @@ fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> isize {
         opt_stripped.as_ptr(),
         ptr::null(),
         0,
-        AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
+        ffi::AV_OPT_SEARCH_CHILDREN | ffi::AV_OPT_SEARCH_FAKE_OBJ,
     ) || ((opt_head == Some('v') || opt_head == Some('a') || opt_head == Some('s'))
         && opt_find(
             &mut cc as *mut _ as *mut c_void,
             opt_nohead.unwrap().as_ptr(),
             ptr::null(),
             0,
-            AV_OPT_SEARCH_FAKE_OBJ,
+            ffi::AV_OPT_SEARCH_FAKE_OBJ,
         ))
     {
         CODEC_OPTS.lock().unwrap().insert(opt.into(), arg.into());
@@ -578,7 +594,7 @@ fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> isize {
         opt_ptr,
         ptr::null(),
         0,
-        AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
+        ffi::AV_OPT_SEARCH_CHILDREN | ffi::AV_OPT_SEARCH_FAKE_OBJ,
     ) {
         FORMAT_OPTS.lock().unwrap().insert(opt.into(), arg.into());
         consumed = true;
@@ -601,7 +617,7 @@ fn opt_find(
     opt_flags: u32,
     search_flags: u32,
 ) -> bool {
-    let o = unsafe { av_opt_find(obj, name, unit, opt_flags as i32, search_flags as i32) };
+    let o = unsafe { ffi::av_opt_find(obj, name, unit, opt_flags as i32, search_flags as i32) };
     if o.is_null() {
         false
     } else if unsafe { o.as_ref() }.unwrap().flags == 0 {
@@ -670,6 +686,182 @@ fn add_opt<'ctxt, 'global>(
         key: key.to_owned(),
         val: val.to_owned(),
     })
+}
+
+pub fn print_error(filename: &str, err: i32) {
+    let mut errbuf = [0 as libc::c_char; 128];
+    let errbuf_ptr = unsafe {
+        if ffi::av_strerror(err, &mut errbuf as *mut _ as *mut i8, 128) < 0 {
+            CString::from_raw(ffi::strerror(AVUNERROR(err)))
+        } else {
+            CString::from_raw(&mut errbuf as *mut _ as *mut i8)
+        }
+    };
+
+    error!("{}: {}", filename, errbuf_ptr.to_str().unwrap());
+}
+
+unsafe fn check_stream_specifier(
+    s: *mut ffi::AVFormatContext,
+    st: *mut ffi::AVStream,
+    spec: *const libc::c_char,
+) -> libc::c_int {
+    let ret = ffi::avformat_match_stream_specifier(s, st, spec);
+    let spec = CStr::from_ptr(spec);
+    if ret < 0 {
+        error!("Invalid stream specifier: {}.", spec.to_string_lossy());
+    }
+    ret
+}
+
+unsafe fn filter_codec_opts(
+    opts_ptr: *mut ffi::AVDictionary,
+    codec_id: ffi::AVCodecID,
+    s_ptr: *mut ffi::AVFormatContext,
+    st_ptr: *mut ffi::AVStream,
+    codec_ptr: *mut ffi::AVCodec,
+) -> *mut ffi::AVDictionary {
+    let s = s_ptr.as_ref().unwrap();
+    let st = st_ptr.as_ref().unwrap();
+    let mut cc = ffi::avcodec_get_class();
+
+    let mut flags = if !s.oformat.is_null() {
+        ffi::AV_OPT_FLAG_ENCODING_PARAM
+    } else {
+        ffi::AV_OPT_FLAG_DECODING_PARAM
+    };
+
+    let codec_ptr = if codec_ptr.is_null() {
+        if !s.oformat.is_null() {
+            ffi::avcodec_find_encoder(codec_id)
+        } else {
+            ffi::avcodec_find_decoder(codec_id)
+        }
+    } else {
+        codec_ptr
+    };
+
+    let prefix = match st.codecpar.as_ref().unwrap().codec_type {
+        ffi::AVMediaType_AVMEDIA_TYPE_VIDEO => {
+            flags |= ffi::AV_OPT_FLAG_VIDEO_PARAM;
+            b'v'
+        }
+        ffi::AVMediaType_AVMEDIA_TYPE_AUDIO => {
+            flags |= ffi::AV_OPT_FLAG_AUDIO_PARAM;
+            b'a'
+        }
+        ffi::AVMediaType_AVMEDIA_TYPE_SUBTITLE => {
+            flags |= ffi::AV_OPT_FLAG_SUBTITLE_PARAM;
+            b's'
+        }
+        _ => 0 as u8,
+    };
+
+    let mut ret = ptr::null_mut();
+    let mut t_ptr = ptr::null_mut();
+
+    let empty = CString::new("").unwrap();
+
+    loop {
+        t_ptr = ffi::av_dict_get(
+            opts_ptr,
+            empty.as_ptr(),
+            t_ptr,
+            ffi::AV_DICT_IGNORE_SUFFIX as i32,
+        );
+        let t = match t_ptr.as_ref() {
+            Some(t) => t,
+            None => break,
+        };
+
+        let p = libc::strchr(t.key, b':' as _);
+
+        // check stream specification in opt name
+        if !p.is_null() {
+            match check_stream_specifier(s_ptr, st_ptr, p.offset(1)) {
+                1 => {
+                    *p = 0;
+                    break;
+                }
+                0 => {
+                    continue;
+                }
+                _ => panic!(),
+            }
+        }
+
+        if !ffi::av_opt_find(
+            &mut cc as *mut _ as *mut c_void,
+            t.key,
+            ptr::null(),
+            flags as _,
+            ffi::AV_OPT_SEARCH_FAKE_OBJ as _,
+        )
+        .is_null()
+            || codec_ptr.is_null()
+            || (!codec_ptr.as_ref().unwrap().priv_class.is_null()
+                && !ffi::av_opt_find(
+                    &mut codec_ptr.as_mut().unwrap().priv_class as *mut _ as *mut c_void,
+                    t.key,
+                    ptr::null(),
+                    flags as _,
+                    ffi::AV_OPT_SEARCH_FAKE_OBJ as _,
+                )
+                .is_null())
+        {
+            ffi::av_dict_set(&mut ret as *mut _, t.key, t.value, 0);
+        } else if *t.key == prefix as i8
+            && !ffi::av_opt_find(
+                &mut cc as *mut _ as *mut c_void,
+                t.key.offset(1),
+                ptr::null(),
+                flags as i32,
+                ffi::AV_OPT_SEARCH_FAKE_OBJ as i32,
+            )
+            .is_null()
+        {
+            ffi::av_dict_set(&mut ret as *mut _, t.key.offset(1), t.value, 0);
+        }
+        if !p.is_null() {
+            *p = b':' as _;
+        }
+    }
+
+    ret
+}
+
+pub unsafe fn setup_find_stream_info_opts(
+    s: *mut ffi::AVFormatContext,
+    codec_opts: *mut ffi::AVDictionary,
+) -> *mut *mut ffi::AVDictionary {
+    let s_ptr = s;
+    let s = s_ptr.as_ref().unwrap();
+    if s.nb_streams == 0 {
+        return ptr::null_mut();
+    }
+    let opts_ptr = ffi::av_mallocz_array(
+        s.nb_streams as u64,
+        mem::size_of::<*mut ffi::AVDictionary>() as u64,
+    ) as *mut *mut ffi::AVDictionary;
+
+    if opts_ptr.is_null() {
+        error!("Could not alloc memory for stream options.");
+        ptr::null_mut()
+    } else {
+        let opts = slice::from_raw_parts_mut(opts_ptr, s.nb_streams as usize);
+        let s_streams = slice::from_raw_parts_mut(s.streams, s.nb_streams as usize);
+        for (opt, s_stream) in opts.iter_mut().zip(s_streams.iter()) {
+            let codec_id = s_stream
+                .as_ref()
+                .unwrap()
+                .codecpar
+                .as_ref()
+                .unwrap()
+                .codec_id;
+            *opt = filter_codec_opts(codec_opts, codec_id, s_ptr, *s_stream, ptr::null_mut());
+        }
+        opts_ptr
+    }
 }
 
 #[cfg(test)]
