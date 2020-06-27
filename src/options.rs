@@ -325,52 +325,52 @@ pub static OPTIONS: Lazy<[OptionDef; 179]> = Lazy::new(|| {
 const VSYNC_AUTO: isize = -1;
 
 // In ffmpeg.h as extern value, TODO extern it
-static mut videotoolbox_pixfmt: *mut c_char = std::ptr::null_mut();
+pub static mut videotoolbox_pixfmt: *mut c_char = std::ptr::null_mut();
 
 // In cmdutils.c
-static mut hide_banner: bool = false;
+pub static mut hide_banner: bool = false;
 
 // In ffmpeg_qsv.c
-static mut qsv_device: *mut c_char = std::ptr::null_mut();
+pub static mut qsv_device: *mut c_char = std::ptr::null_mut();
 
 // In ffmpeg_opt.c
-static mut intra_only: isize = 0;
-static mut file_overwrite: isize = 0;
-static mut no_file_overwrite: isize = 0;
-static mut do_psnr: isize = 0;
-static mut input_sync: isize = 0;
-static mut input_stream_potentially_available: isize = 0;
-static mut ignore_unknown_streams: isize = 0;
-static mut copy_unknown_streams: isize = 0;
-static mut find_stream_info: isize = 1;
+pub static mut intra_only: isize = 0;
+pub static mut file_overwrite: isize = 0;
+pub static mut no_file_overwrite: isize = 0;
+pub static mut do_psnr: isize = 0;
+pub static mut input_sync: isize = 0;
+pub static mut input_stream_potentially_available: isize = 0;
+pub static mut ignore_unknown_streams: isize = 0;
+pub static mut copy_unknown_streams: isize = 0;
+pub static mut find_stream_info: isize = 1;
 
-static mut audio_drift_threshold: f32 = 0.1;
-static mut dts_delta_threshold: f32 = 10.;
-static mut dts_error_threshold: f32 = 3600. * 30.;
+pub static mut audio_drift_threshold: f32 = 0.1;
+pub static mut dts_delta_threshold: f32 = 10.;
+pub static mut dts_error_threshold: f32 = 3600. * 30.;
 
-static mut audio_volume: isize = 256;
-static mut audio_sync_method: isize = 0;
-static mut video_sync_method: isize = VSYNC_AUTO;
-static mut frame_drop_threshold: f32 = 0.;
-static mut do_deinterlace: isize = 0;
-static mut do_benchmark: isize = 0;
-static mut do_benchmark_all: isize = 0;
-static mut do_hex_dump: isize = 0;
-static mut do_pkt_dump: isize = 0;
-static mut copy_ts: isize = 0;
-static mut start_at_zero: isize = 0;
-static mut copy_tb: isize = -1;
-static mut debug_ts: isize = 0;
-static mut exit_on_error: isize = 0;
-static mut abort_on_flags: isize = 0;
-static mut print_stats: isize = -1;
-static mut qp_hist: isize = 0;
-static mut stdin_interaction: isize = 1;
-static mut frame_bits_per_raw_sample: isize = 0;
-static mut max_error_rate: f32 = 2. / 3.;
-static mut filter_nbthreads: isize = 0;
-static mut filter_complex_nbthreads: isize = 0;
-static mut vstats_version: isize = 2;
+pub static mut audio_volume: isize = 256;
+pub static mut audio_sync_method: isize = 0;
+pub static mut video_sync_method: isize = VSYNC_AUTO;
+pub static mut frame_drop_threshold: f32 = 0.;
+pub static mut do_deinterlace: isize = 0;
+pub static mut do_benchmark: isize = 0;
+pub static mut do_benchmark_all: isize = 0;
+pub static mut do_hex_dump: isize = 0;
+pub static mut do_pkt_dump: isize = 0;
+pub static mut copy_ts: isize = 0;
+pub static mut start_at_zero: isize = 0;
+pub static mut copy_tb: isize = -1;
+pub static mut debug_ts: isize = 0;
+pub static mut exit_on_error: isize = 0;
+pub static mut abort_on_flags: isize = 0;
+pub static mut print_stats: isize = -1;
+pub static mut qp_hist: isize = 0;
+pub static mut stdin_interaction: isize = 1;
+pub static mut frame_bits_per_raw_sample: isize = 0;
+pub static mut max_error_rate: f32 = 2. / 3.;
+pub static mut filter_nbthreads: isize = 0;
+pub static mut filter_complex_nbthreads: isize = 0;
+pub static mut vstats_version: isize = 2;
 
 // In cmdutils.c in random order
 fn show_license(optctx: *mut c_void, opt: &str, arg: &str) -> i64 {
