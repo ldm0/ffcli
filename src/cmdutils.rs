@@ -23,10 +23,6 @@ enum OptGroup {
     GroupInfile = 1,
 }
 
-// TODO implement all error number later, might in a separate file
-// TODO change this to FFERRTAG later.
-const AVERROR_OPTION_NOT_FOUND: isize = 3;
-
 bitflags! {
     #[derive(Default)]
     pub struct OptionFlag: u64 {
@@ -415,7 +411,7 @@ pub fn split_commandline<'ctxt, 'global>(
     args: &[String],
     options: &'global [OptionDef],
     groups: &'global [OptionGroupDef],
-) -> Result<(), ()> {
+) -> Result<(), libc::c_int> {
     let argv = args;
     let argc = argv.len();
 
@@ -456,7 +452,7 @@ pub fn split_commandline<'ctxt, 'global>(
         if let Some(group_idx) = match_group_separator(groups, opt) {
             let arg = match argv.get(optindex) {
                 Some(arg) => arg,
-                None => return Err(()),
+                None => return Err(AVERROR(libc::EINVAL)),
             };
             optindex += 1;
 
@@ -483,7 +479,7 @@ pub fn split_commandline<'ctxt, 'global>(
             } else if po.flags.intersects(OptionFlag::HAS_ARG) {
                 let arg = match argv.get(optindex) {
                     Some(x) => x,
-                    None => return Err(()),
+                    None => return Err(AVERROR(libc::EINVAL)),
                 };
                 optindex += 1;
                 arg
@@ -500,22 +496,19 @@ pub fn split_commandline<'ctxt, 'global>(
 
         // AVOptions
         if let Some(arg) = argv.get(optindex) {
-            // Hint: `rust_analyzer` failed to parse following code
             // Process common options and process AVOption by the way(the
             // function name is not that self-explaining), **where some global
             // option directory is fulfilled**(this is extremely weird for me to
             // understand).
-            match opt_default(ptr::null_mut(), opt, arg) {
-                0.. => {
-                    debug!(" matched as AVOption '{}' with argument '{}'.", opt, arg);
-                    optindex += 1;
-                    continue;
-                }
-                AVERROR_OPTION_NOT_FOUND => {
-                    debug!("Error parsing option '{}' with argument '{}'.\n", opt, arg);
-                    return Err(());
-                }
-                _ => {}
+            let ret = opt_default(ptr::null_mut(), opt, arg);
+            if ret >= 0 {
+                debug!(" matched as AVOption '{}' with argument '{}'.", opt, arg);
+                optindex += 1;
+                continue;
+            }
+            if ret != AVERROR_OPTION_NOT_FOUND {
+                debug!("Error parsing option '{}' with argument '{}'.\n", opt, arg);
+                return Err(ret);
             }
         }
 
@@ -533,7 +526,7 @@ pub fn split_commandline<'ctxt, 'global>(
         }
 
         error!("Unrecognized option '{}'.", opt);
-        return Err(());
+        return Err(AVERROR_OPTION_NOT_FOUND);
     }
 
     if !octx.cur_group.opts.is_empty()
@@ -548,7 +541,7 @@ pub fn split_commandline<'ctxt, 'global>(
     Ok(())
 }
 
-fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> isize {
+fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> i32 {
     if opt == "debug" || opt == "fdebug" {
         // TODO implement equivalent function of av_log_set_level()
         info!("debug is currently not implemented, debug is the default");

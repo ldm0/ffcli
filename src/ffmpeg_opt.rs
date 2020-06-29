@@ -523,6 +523,7 @@ pub fn ffmpeg_parse_options(args: &[String]) {
     println!("{:#?}", octx);
     parse_optgroup(None, &octx.global_opts).unwrap();
 
+    /*
     open_files(
         &mut octx.groups[OptGroup::GroupInFile as usize],
         "input",
@@ -540,4 +541,5 @@ pub fn ffmpeg_parse_options(args: &[String]) {
     .unwrap();
 
     check_filter_outputs();
+    */
 }
