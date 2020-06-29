@@ -8,7 +8,6 @@ use rusty_ffmpeg::{
 };
 
 use std::{
-    cmp,
     collections::HashMap,
     default,
     ffi::{CStr, CString},
@@ -49,13 +48,11 @@ bitflags! {
     }
 }
 
-// Consider changing them to AVDictionary if needed.
-static FORMAT_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static CODEC_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static SWS_DICT: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static SWR_OPTS: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static RESAMPLE_OPTS: Lazy<Mutex<HashMap<String, String>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static mut format_opts: *mut ffi::AVDictionary = ptr::null_mut();
+static mut codec_opts: *mut ffi::AVDictionary = ptr::null_mut();
+static mut sws_dict: *mut ffi::AVDictionary = ptr::null_mut();
+static mut swr_opts: *mut ffi::AVDictionary = ptr::null_mut();
+static mut resample_opts: *mut ffi::AVDictionary = ptr::null_mut();
 
 pub union OptionOperation {
     pub dst_ptr: *mut c_void,
@@ -530,9 +527,9 @@ pub fn split_commandline<'ctxt, 'global>(
     }
 
     if !octx.cur_group.opts.is_empty()
-        || !CODEC_OPTS.lock().unwrap().is_empty()
-        || !FORMAT_OPTS.lock().unwrap().is_empty()
-        || !RESAMPLE_OPTS.lock().unwrap().is_empty()
+        || unsafe { !codec_opts.is_null() }
+        || unsafe { !format_opts.is_null() }
+        || unsafe { !resample_opts.is_null() }
     {
         debug!("Trailing option(s) found in the command: may be ignored.");
     }
@@ -547,7 +544,6 @@ fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> i32 {
         info!("debug is currently not implemented, debug is the default");
     }
     let opt_stripped = CString::new(opt.split(':').next().unwrap()).unwrap();
-    let opt_head = opt.chars().next();
     // This is unicode-safe because it's only used when first char is ascii.
     let opt_nohead = opt.get(1..).map(|x| CString::new(x).unwrap());
 
@@ -564,32 +560,55 @@ fn opt_default(_: *mut c_void, opt: &str, arg: &str) -> i32 {
     */
 
     let mut consumed = false;
-    if opt_find(
-        &mut cc as *mut _ as *mut c_void,
-        opt_stripped.as_ptr(),
-        ptr::null(),
-        0,
-        ffi::AV_OPT_SEARCH_CHILDREN | ffi::AV_OPT_SEARCH_FAKE_OBJ,
-    ) || ((opt_head == Some('v') || opt_head == Some('a') || opt_head == Some('s'))
-        && opt_find(
+
+    let mut o;
+    if {
+        o = opt_find(
+            &mut cc as *mut _ as *mut c_void,
+            opt_stripped.as_ptr(),
+            ptr::null(),
+            0,
+            ffi::AV_OPT_SEARCH_CHILDREN | ffi::AV_OPT_SEARCH_FAKE_OBJ,
+        );
+        !o.is_null()
+    } || ((opt.starts_with('v') || opt.starts_with('a') || opt.starts_with('s')) && {
+        o = opt_find(
             &mut cc as *mut _ as *mut c_void,
             opt_nohead.unwrap().as_ptr(),
             ptr::null(),
             0,
             ffi::AV_OPT_SEARCH_FAKE_OBJ,
-        ))
-    {
-        CODEC_OPTS.lock().unwrap().insert(opt.into(), arg.into());
+        );
+        !o.is_null()
+    }) {
+        // Shouldn't be null, so unwrap.
+        let o = unsafe { o.as_ref() }.unwrap();
+        let flags = if o.type_ == ffi::AVOptionType_AV_OPT_TYPE_FLAGS
+            && (arg.starts_with('-') || arg.starts_with('+'))
+        {
+            ffi::AV_DICT_APPEND
+        } else {
+            0
+        };
+        unsafe { ffi::av_dict_set(&mut codec_opts as *mut _, opt_ptr, arg_ptr, flags as _) };
         consumed = true;
     }
-    if opt_find(
+    let o = opt_find(
         &mut fc as *mut _ as *mut c_void,
         opt_ptr,
         ptr::null(),
         0,
         ffi::AV_OPT_SEARCH_CHILDREN | ffi::AV_OPT_SEARCH_FAKE_OBJ,
-    ) {
-        FORMAT_OPTS.lock().unwrap().insert(opt.into(), arg.into());
+    );
+    if let Some(o) = unsafe { o.as_ref() } {
+        let flags = if o.type_ == ffi::AVOptionType_AV_OPT_TYPE_FLAGS
+            && (arg.starts_with('-') || arg.starts_with('+'))
+        {
+            ffi::AV_DICT_APPEND
+        } else {
+            0
+        };
+        unsafe { ffi::av_dict_set(&mut format_opts as *mut _, opt_ptr, arg_ptr, flags as _) };
         consumed = true;
     }
 
@@ -609,14 +628,14 @@ fn opt_find(
     unit: *const libc::c_char,
     opt_flags: u32,
     search_flags: u32,
-) -> bool {
+) -> *const ffi::AVOption {
     let o = unsafe { ffi::av_opt_find(obj, name, unit, opt_flags as i32, search_flags as i32) };
     if o.is_null() {
-        false
+        ptr::null()
     } else if unsafe { o.as_ref() }.unwrap().flags == 0 {
-        false
+        ptr::null()
     } else {
-        true
+        o
     }
 }
 
@@ -635,17 +654,32 @@ fn finish_group(octx: &mut OptionParseContext, group_idx: usize, arg: &str) {
     let mut new_group = octx.cur_group.clone();
     new_group.arg = arg.to_owned();
     new_group.group_def = octx.groups[group_idx].group_def;
+    unsafe {
+        new_group.sws_dict = sws_dict;
+        new_group.swr_opts = swr_opts;
+        new_group.codec_opts = codec_opts;
+        new_group.format_opts = format_opts;
+        new_group.resample_opts = resample_opts;
+    }
 
     octx.groups[group_idx].groups.push(new_group);
-    octx.cur_group = OptionGroup::new_anonymous();
+
+    unsafe {
+        codec_opts = ptr::null_mut();
+        format_opts = ptr::null_mut();
+        resample_opts = ptr::null_mut();
+        sws_dict = ptr::null_mut();
+        swr_opts = ptr::null_mut();
+    }
     init_opts();
+
+    octx.cur_group = OptionGroup::new_anonymous();
 }
 
 fn init_opts() {
-    SWS_DICT
-        .lock()
-        .unwrap()
-        .insert("flags".into(), "bicubic".into());
+    let flags = CString::new("flags").unwrap();
+    let bicubic = CString::new("bicubic").unwrap();
+    unsafe { ffi::av_dict_set(&mut sws_dict as *mut _, flags.as_ptr(), bicubic.as_ptr(), 0) };
 }
 
 fn find_option<'global>(
@@ -825,7 +859,7 @@ unsafe fn filter_codec_opts(
 
 pub unsafe fn setup_find_stream_info_opts(
     s: *mut ffi::AVFormatContext,
-    codec_opts: *mut ffi::AVDictionary,
+    codec_opts_arg: *mut ffi::AVDictionary,
 ) -> *mut *mut ffi::AVDictionary {
     let s_ptr = s;
     let s = s_ptr.as_ref().unwrap();
@@ -851,7 +885,7 @@ pub unsafe fn setup_find_stream_info_opts(
                 .as_ref()
                 .unwrap()
                 .codec_id;
-            *opt = filter_codec_opts(codec_opts, codec_id, s_ptr, *s_stream, ptr::null_mut());
+            *opt = filter_codec_opts(codec_opts_arg, codec_id, s_ptr, *s_stream, ptr::null_mut());
         }
         opts_ptr
     }
