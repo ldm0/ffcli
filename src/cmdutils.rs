@@ -374,7 +374,7 @@ fn write_option(
         let optctx = if let &mut Some(ref mut optctx) = optctx {
             *optctx as *mut _ as *mut c_void
         } else {
-            panic!("Option contains function pointer but in global_opts");
+            ptr::null_mut()
         };
         let func = unsafe { po.u.func_arg };
         let ret = func(optctx, opt, arg);
